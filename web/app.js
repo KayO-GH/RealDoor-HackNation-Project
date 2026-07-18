@@ -85,6 +85,7 @@ function renderDocuments() {
       <div class="doc-meta"><span>${escapeHtml(document.document_type.replaceAll("_", " "))}</span><span>${escapeHtml(document.document_id)}</span></div>
       <h4>${escapeHtml(document.file_name)}</h4>
       <a class="evidence-link" href="${escapeHtml(document.preview_url)}" target="_blank" rel="noreferrer">Open original synthetic PDF</a>
+      ${sourceMapMarkup(document)}
       ${document.contains_untrusted_content ? `<p class="untrusted">${escapeHtml(document.untrusted_content_handling)}</p>` : ""}
       <table class="field-table"><thead><tr><th>Allowlisted field</th><th>Source evidence</th></tr></thead><tbody>${document.fields.map((field) => {
         const key = evidenceKey(document.document_id, field.field);
@@ -96,6 +97,17 @@ function renderDocuments() {
   $("#document-list").querySelectorAll("input[data-evidence-document]").forEach((input) => input.addEventListener("input", () => {
     applyEvidenceCorrection(input.dataset.evidenceDocument, input.dataset.evidenceField, input.value);
   }));
+}
+
+function sourceMapMarkup(document) {
+  return `<figure class="source-map"><figcaption>Page 1 evidence-box map. Each outlined rectangle corresponds to an allowlisted field below.</figcaption><div class="source-page" role="img" aria-label="Page 1 source-box map for ${escapeHtml(document.document_id)}">${document.fields.map((field) => {
+    const [x1, y1, x2, y2] = field.bbox;
+    const left = (x1 / 612) * 100;
+    const top = ((792 - y2) / 792) * 100;
+    const width = Math.max(((x2 - x1) / 612) * 100, 1.2);
+    const height = Math.max(((y2 - y1) / 792) * 100, 1.2);
+    return `<span class="source-box" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;" title="${escapeHtml(field.field)} · page ${field.page} · box [${field.bbox.join(", ")}]"></span>`;
+  }).join("")}</div></figure>`;
 }
 
 function fieldValueFromEvidence(documentId, field) {
@@ -292,8 +304,11 @@ function downloadPacket() {
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
   link.download = `realdoor-${state.payload.household_id.toLowerCase()}-readiness-packet.json`;
+  link.style.display = "none";
+  document.body.append(link);
   link.click();
-  URL.revokeObjectURL(link.href);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   addAudit("Downloaded renter-controlled readiness packet");
   announce("Readiness packet downloaded. It was not sent to any property or provider.");
 }

@@ -72,6 +72,10 @@ textarea { resize:vertical; }
 .field-table th { color:var(--muted); font-weight:700; }
 .evidence-link { font-size:.82rem; }
 .untrusted { margin:.7rem 0 0; color:#8b4b00; font-size:.85rem; font-weight:650; }
+.source-map { margin:.85rem 0 0; }
+.source-map figcaption { margin-bottom:.35rem; color:var(--muted); font-size:.78rem; }
+.source-page { position:relative; height:150px; overflow:hidden; border:1px solid #bdcddd; border-radius:6px; background:repeating-linear-gradient(0deg,#fafcff 0,#fafcff 21px,#edf2f7 22px),repeating-linear-gradient(90deg,transparent 0,transparent 35px,#edf2f7 36px); }
+.source-box { position:absolute; min-width:5px; min-height:3px; border:2px solid #7d2ee6; border-radius:2px; background:#b986ff24; }
 .calculation-result { display:grid; grid-template-columns:repeat(3,1fr); gap:.8rem; margin:1rem 0; }
 .stat { padding:.75rem; border-radius:10px; background:#f0f5fa; }
 .stat span { display:block; color:var(--muted); font-size:.78rem; font-weight:700; }

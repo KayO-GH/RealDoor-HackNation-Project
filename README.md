@@ -55,4 +55,4 @@ The project regression suite checks organizer checklist calculations, all suppli
 
 ## Current Implementation Status
 
-The first local end-to-end implementation is in place: editable field-level Profile evidence/confirmation, cited frozen-rule math, readiness reasons that update after corrections, renter packet preview/download, deletion, safety refusals, and keyboard-accessible controls. See `PROGRESS.md` for the current verification status before changing or demoing the app.
+The first local end-to-end implementation is in place: editable field-level Profile evidence/confirmation with visible source-box maps and original-PDF links, cited frozen-rule math, readiness reasons that update after corrections, renter packet preview/download, deletion, safety refusals, and keyboard-accessible controls. See `PROGRESS.md` for the current verification status before changing or demoing the app.
