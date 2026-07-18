@@ -2,7 +2,7 @@
 
 ## Status
 
-**Complete — final verified checkpoint ready for `dev`.** This file is the implementation checklist for `PLAN.md`.
+**Complete — final verified checkpoint pushed to `dev`.** This file is the implementation checklist for `PLAN.md`.
 
 ## Completed
 
