@@ -34,7 +34,7 @@ python3 -m unittest discover -s tests -v
 python3 scripts/evaluate.py
 ```
 
-The project regression suite checks the organizer checklist calculations, citations, allowlisted extraction fields, source boxes, and adversarial safety boundaries. Rehearse the user-facing sequence in `DEMO_PLAN.md`.
+The project regression suite checks organizer checklist calculations, all supplied Q&A answers/citations, the submission contract, allowlisted extraction fields, source boxes, and adversarial safety boundaries. Rehearse the user-facing sequence in `DEMO_PLAN.md`.
 
 ## What Is In This Repo
 - Challenge plan and working norms.
@@ -55,4 +55,4 @@ The project regression suite checks the organizer checklist calculations, citati
 
 ## Current Implementation Status
 
-The first local end-to-end implementation is in place: Profile evidence/confirmation, cited frozen-rule math, readiness reasons, packet download, deletion, safety refusals, and keyboard-accessible controls. See `PROGRESS.md` for the current verification status before changing or demoing the app.
+The first local end-to-end implementation is in place: editable field-level Profile evidence/confirmation, cited frozen-rule math, readiness reasons that update after corrections, renter packet preview/download, deletion, safety refusals, and keyboard-accessible controls. See `PROGRESS.md` for the current verification status before changing or demoing the app.

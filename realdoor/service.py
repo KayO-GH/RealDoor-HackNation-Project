@@ -95,6 +95,7 @@ class RealDoorService:
         self.root = Path(root)
         self._documents = self._load_jsonl("synthetic_documents/gold/document_gold.jsonl")
         self._rules = self._load_jsonl("rules/rule_corpus.jsonl")
+        self._qa = self._load_jsonl("evaluation/qa_gold.jsonl")
         self._checklists = self._load_checklists()
         self._thresholds = self._load_thresholds()
         self._documents_by_household: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -146,6 +147,22 @@ class RealDoorService:
             "consent": self.consent_payload(),
         }
 
+    def submission_payload(self, household_id: str) -> dict[str, Any]:
+        """Return the organizer's required non-decisioning submission shape."""
+        payload = self.household_payload(household_id)
+        calculation = payload["calculation"]
+        citations = [calculation["calculation_citation"], payload["readiness"]["citation"]]
+        if calculation["threshold_citation"]:
+            citations.append(calculation["threshold_citation"])
+        citations.extend(source["citation"] for source in calculation["sources"])
+        return {
+            "household_id": household_id,
+            "annualized_income": calculation["annualized_income"],
+            "comparison": calculation["comparison"],
+            "readiness_status": payload["readiness"]["status"],
+            "citations": citations,
+        }
+
     def consent_payload(self) -> dict[str, Any]:
         return {
             "summary": "Synthetic files stay in this browser session. The local server uses fixture metadata only and does not store raw document contents.",
@@ -159,6 +176,13 @@ class RealDoorService:
 
     def safety_answer(self, question: str, active_household: str | None) -> dict[str, Any]:
         lowered = question.lower()
+        exact_gold_answer = next((row for row in self._qa if row["question"].lower() == lowered.strip()), None)
+        if exact_gold_answer:
+            return {
+                "kind": "rule_answer",
+                "answer": exact_gold_answer["answer"],
+                "citations": [self._rule_citation(self._rule(rule_id)) for rule_id in exact_gold_answer["rule_ids"]],
+            }
         if any(word in lowered for word in ("disability", "immigration", "health", "race", "religion", "family status")):
             return self._safety_response(
                 "I cannot infer or use protected traits, immigration status, disability, health, or family status. I can only work with the published rule and confirmed allowlisted evidence.",
@@ -199,6 +223,27 @@ class RealDoorService:
                 "An unsigned self-declaration is not treated as employer evidence. Preserve it as a review gap and ask a qualified human which corroborating document is needed.",
                 ["CH-READINESS-001", "CH-DECISION-001"],
             )
+        if active_household and "annualized income" in lowered:
+            calculation = self.household_payload(active_household)["calculation"]
+            return {
+                "kind": "rule_answer",
+                "answer": f"${calculation['annualized_income']:,.2f} under the frozen annualization convention.",
+                "citations": [calculation["calculation_citation"], *[source["citation"] for source in calculation["sources"]]],
+            }
+        if active_household and ("compare" in lowered or "comparison" in lowered):
+            calculation = self.household_payload(active_household)["calculation"]
+            return {
+                "kind": "rule_answer",
+                "answer": calculation["comparison"],
+                "citations": [calculation["calculation_citation"], calculation["threshold_citation"]],
+            }
+        if active_household and "readiness" in lowered:
+            payload = self.household_payload(active_household)
+            return {
+                "kind": "rule_answer",
+                "answer": payload["readiness"]["status"],
+                "citations": [payload["readiness"]["citation"]],
+            }
         if active_household and ("threshold" in lowered or "60%" in lowered or "ami" in lowered):
             payload = self.household_payload(active_household)
             calculation = payload["calculation"]

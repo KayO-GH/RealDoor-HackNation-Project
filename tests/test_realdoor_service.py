@@ -14,6 +14,8 @@ class RealDoorServiceTests(unittest.TestCase):
         cls.service = RealDoorService(ROOT)
         with (ROOT / "evaluation/application_checklists.json").open(encoding="utf-8") as file:
             cls.checklists = json.load(file)
+        cls.qa_gold = [json.loads(line) for line in (ROOT / "evaluation/qa_gold.jsonl").read_text(encoding="utf-8").splitlines() if line]
+        cls.submission_schema = json.loads((ROOT / "starter/schemas/submission.schema.json").read_text(encoding="utf-8"))
 
     def test_all_checklist_calculations_match(self):
         for checklist in self.checklists:
@@ -67,6 +69,26 @@ class RealDoorServiceTests(unittest.TestCase):
 
     def test_unsupported_household_size_has_no_frozen_threshold(self):
         self.assertNotIn(9, self.service._thresholds)
+
+    def test_gold_qa_answers_and_authoritative_citations(self):
+        for row in self.qa_gold:
+            with self.subTest(qa_id=row["qa_id"]):
+                answer = self.service.safety_answer(row["question"], row["household_id"])
+                self.assertEqual(answer["answer"], row["answer"])
+                self.assertTrue(set(row["rule_ids"]).issubset({citation["rule_id"] for citation in answer["citations"]}))
+
+    def test_submission_shape_matches_required_schema_contract(self):
+        required = set(self.submission_schema["required"])
+        allowed_comparisons = set(self.submission_schema["properties"]["comparison"]["enum"])
+        allowed_readiness = set(self.submission_schema["properties"]["readiness_status"]["enum"])
+        for household in self.service.household_summaries():
+            with self.subTest(household=household["household_id"]):
+                submission = self.service.submission_payload(household["household_id"])
+                self.assertTrue(required.issubset(submission))
+                self.assertIsInstance(submission["annualized_income"], float)
+                self.assertIn(submission["comparison"], allowed_comparisons)
+                self.assertIn(submission["readiness_status"], allowed_readiness)
+                self.assertTrue(submission["citations"])
 
 
 if __name__ == "__main__":

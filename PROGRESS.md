@@ -16,6 +16,8 @@
 - [x] Added architecture/risk documentation and README teammate instructions.
 - [x] Added project regression checks for gold checklists, citations, source boxes, and supplied adversarial fixtures.
 - [x] Browser-smoke-tested consent, fixture loading, correction invalidation/recalculation, safety refusal, and session deletion.
+- [x] Added editable correction controls for every displayed allowlisted field; relevant date and income corrections update downstream readiness and math after reconfirmation.
+- [x] Added regression coverage for all supplied Q&A gold answers/citations and the required submission contract.
 
 ## In progress
 

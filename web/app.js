@@ -3,6 +3,7 @@ const state = {
   confirmed: false,
   profile: {},
   sources: [],
+  evidence: {},
   audit: [],
   consent: null,
   consentAcknowledged: false,
@@ -31,6 +32,10 @@ async function getJson(path) {
 
 function valueKey(field) {
   return `${field.document_id}:${field.field}`;
+}
+
+function evidenceKey(documentId, field) {
+  return `${documentId}:${field}`;
 }
 
 function statusClass(status) {
@@ -66,6 +71,8 @@ function renderProfile() {
   }).join("")}</div>`;
   $("#profile-form").querySelectorAll("input").forEach((input) => input.addEventListener("input", () => {
     state.profile[input.dataset.profileKey] = input.value;
+    state.evidence[input.dataset.profileKey] = input.value;
+    renderDocuments();
     markUnconfirmed("A profile value changed. Confirm it before reuse.");
   }));
 }
@@ -79,8 +86,43 @@ function renderDocuments() {
       <h4>${escapeHtml(document.file_name)}</h4>
       <a class="evidence-link" href="${escapeHtml(document.preview_url)}" target="_blank" rel="noreferrer">Open original synthetic PDF</a>
       ${document.contains_untrusted_content ? `<p class="untrusted">${escapeHtml(document.untrusted_content_handling)}</p>` : ""}
-      <table class="field-table"><thead><tr><th>Allowlisted field</th><th>Evidence</th></tr></thead><tbody>${document.fields.map((field) => `<tr><td><strong>${escapeHtml(field.field.replaceAll("_", " "))}</strong><br>${escapeHtml(field.value)}</td><td>p. ${field.page}<br>box [${field.bbox.join(", ")}]<br><span class="status ${field.confidence === "high" ? "ready" : "pending"}">${escapeHtml(field.confidence)}</span></td></tr>`).join("")}</tbody></table>
+      <table class="field-table"><thead><tr><th>Allowlisted field</th><th>Source evidence</th></tr></thead><tbody>${document.fields.map((field) => {
+        const key = evidenceKey(document.document_id, field.field);
+        const value = state.evidence[key] ?? field.value;
+        const confirmation = state.evidence[key] === undefined ? "pending" : "corrected";
+        return `<tr><td><label for="evidence-${escapeHtml(key)}"><strong>${escapeHtml(field.field.replaceAll("_", " "))}</strong></label><input id="evidence-${escapeHtml(key)}" data-evidence-document="${escapeHtml(document.document_id)}" data-evidence-field="${escapeHtml(field.field)}" value="${escapeHtml(value)}" aria-describedby="evidence-meta-${escapeHtml(key)}"><span id="evidence-meta-${escapeHtml(key)}" class="field-meta">${escapeHtml(field.purpose)} · ${escapeHtml(confirmation)}; renter confirmation required</span></td><td>p. ${field.page}<br>box [${field.bbox.join(", ")}]<br><span class="status ${field.confidence === "high" ? "ready" : "pending"}">${escapeHtml(field.confidence)}</span></td></tr>`;
+      }).join("")}</tbody></table>
     </article>`).join("");
+  $("#document-list").querySelectorAll("input[data-evidence-document]").forEach((input) => input.addEventListener("input", () => {
+    applyEvidenceCorrection(input.dataset.evidenceDocument, input.dataset.evidenceField, input.value);
+  }));
+}
+
+function fieldValueFromEvidence(documentId, field) {
+  const document = state.payload.documents.find((item) => item.document_id === documentId);
+  const sourceField = document?.fields.find((item) => item.field === field);
+  return state.evidence[evidenceKey(documentId, field)] ?? sourceField?.value;
+}
+
+function applyEvidenceCorrection(documentId, field, value) {
+  state.evidence[evidenceKey(documentId, field)] = value;
+  const profileField = state.payload.profile_fields.find((item) => item.document_id === documentId && item.field === field);
+  if (profileField) state.profile[valueKey(profileField)] = value;
+  const sourceIndex = state.sources.findIndex((source) => source.document_id === documentId);
+  if (sourceIndex !== -1) {
+    if (field === "pay_frequency" || field === "benefit_frequency") state.sources[sourceIndex].frequency = value;
+    if (field === "gross_pay" || field === "monthly_benefit" || field === "gross_receipts") state.sources[sourceIndex].amount = value;
+    if (field === "regular_hours" || field === "hourly_rate") {
+      const hours = Number(fieldValueFromEvidence(documentId, "regular_hours"));
+      const rate = Number(fieldValueFromEvidence(documentId, "hourly_rate"));
+      if (Number.isFinite(hours) && Number.isFinite(rate)) state.sources[sourceIndex].amount = Math.round(hours * rate * 100) / 100;
+    }
+  }
+  renderProfile();
+  renderCalculation();
+  renderReadiness();
+  renderPacketPreview();
+  markUnconfirmed("An extracted value changed. Confirm it before reuse.");
 }
 
 function renderCalculation() {
@@ -119,14 +161,48 @@ function renderRules() {
 }
 
 function renderReadiness() {
-  const readiness = state.payload.readiness;
-  const calculation = currentCalculation();
-  const extraReason = calculation.threshold === null ? ["NO_FROZEN_THRESHOLD"] : [];
-  const reasons = [...readiness.reasons, ...extraReason];
-  const status = extraReason.length ? "NEEDS_REVIEW" : readiness.status;
+  const readiness = currentReadiness();
+  const reasons = readiness.reasons;
+  const status = readiness.status;
   const reasonMarkup = reasons.length ? `<ul class="reason-list">${reasons.map((reason) => `<li><strong>${escapeHtml(reason)}</strong></li>`).join("")}</ul>` : "<p>No review reason is present in the supplied gold checklist.</p>";
   const missingMarkup = readiness.missing_document_types.length ? `<p><strong>Document context:</strong> ${escapeHtml(readiness.missing_document_types.join(", "))} is not present in this supplied fixture. Follow the frozen checklist and reviewer guidance.</p>` : "";
   $("#readiness-content").innerHTML = `<div class="readiness-summary"><span class="status ${statusClass(status)}">${escapeHtml(status.replaceAll("_", " "))}</span><span>This is readiness only, never an eligibility determination.</span></div><h4>Review reasons</h4>${reasonMarkup}${missingMarkup}<div class="citation">${citationMarkup(readiness.citation)}</div>`;
+}
+
+function currentReadiness() {
+  const readiness = state.payload.readiness;
+  const reasons = new Set(readiness.reasons);
+  const documents = state.payload.documents;
+  const employmentLetters = documents.filter((document) => document.document_type === "employment_letter");
+  const hasExpiredEmploymentLetter = employmentLetters.some((document) => {
+    const value = fieldValueFromEvidence(document.document_id, "document_date");
+    const date = new Date(`${value}T00:00:00Z`);
+    return Number.isFinite(date.getTime()) && Math.floor((Date.UTC(2026, 6, 18) - date.getTime()) / 86400000) > 60;
+  });
+  if (hasExpiredEmploymentLetter) reasons.add("EMPLOYMENT_LETTER_EXPIRED");
+  else reasons.delete("EMPLOYMENT_LETTER_EXPIRED");
+  const hasPayStubConflict = documents.filter((document) => document.document_type === "pay_stub").some((document) => {
+    const gross = Number(fieldValueFromEvidence(document.document_id, "gross_pay"));
+    const hours = Number(fieldValueFromEvidence(document.document_id, "regular_hours"));
+    const rate = Number(fieldValueFromEvidence(document.document_id, "hourly_rate"));
+    return Number.isFinite(gross) && Number.isFinite(hours) && Number.isFinite(rate) && Math.abs(gross - (hours * rate)) > 0.01;
+  });
+  if (hasPayStubConflict) reasons.add("PAY_STUB_TOTAL_CONFLICT");
+  else reasons.delete("PAY_STUB_TOTAL_CONFLICT");
+  if (currentCalculation().threshold === null) reasons.add("NO_FROZEN_THRESHOLD");
+  return { ...readiness, reasons: [...reasons], status: reasons.size ? "NEEDS_REVIEW" : "READY_TO_REVIEW" };
+}
+
+function renderPacketPreview() {
+  if (!state.payload || !state.confirmed) {
+    $("#packet-preview").innerHTML = "<p><strong>Packet preview unavailable:</strong> confirm the profile and calculation inputs first.</p>";
+    return;
+  }
+  const calculation = currentCalculation();
+  const readiness = currentReadiness();
+  const profileItems = state.payload.profile_fields.map((field) => `<li><strong>${escapeHtml(field.field.replaceAll("_", " "))}:</strong> ${escapeHtml(state.profile[valueKey(field)] ?? field.value)} <span class="field-meta">(${escapeHtml(field.document_id)} p. ${field.page})</span></li>`).join("");
+  const note = $("#packet-note").value.trim();
+  $("#packet-preview").innerHTML = `<h4>Packet preview</h4><p><strong>Decision boundary:</strong> readiness evidence only; no eligibility or provider decision.</p><ul>${profileItems}</ul><p><strong>Confirmed annualized income:</strong> ${formatMoney(calculation.annualizedIncome)} · <strong>comparison:</strong> ${escapeHtml(calculation.comparison)}</p><p><strong>Readiness:</strong> ${escapeHtml(readiness.status)}${readiness.reasons.length ? ` · ${escapeHtml(readiness.reasons.join(", "))}` : ""}</p>${note ? `<p><strong>Renter note:</strong> ${escapeHtml(note)}</p>` : ""}<p class="field-meta">Download remains renter-initiated and is never sent to a property or provider.</p>`;
 }
 
 function renderAll() {
@@ -135,6 +211,7 @@ function renderAll() {
   renderCalculation();
   renderRules();
   renderReadiness();
+  renderPacketPreview();
 }
 
 function markUnconfirmed(message) {
@@ -145,6 +222,7 @@ function markUnconfirmed(message) {
   $("#calculation-gate").textContent = message;
   renderCalculation();
   renderReadiness();
+  renderPacketPreview();
   announce(message);
 }
 
@@ -162,6 +240,7 @@ function confirmProfile() {
   $("#profile-state").textContent = "Confirmed for this session";
   renderCalculation();
   renderReadiness();
+  renderPacketPreview();
   addAudit("Profile and calculation inputs confirmed");
   announce("Profile confirmed. The deterministic calculation and packet controls are available.");
 }
@@ -177,6 +256,7 @@ async function loadHousehold(householdId, source) {
     state.confirmed = false;
     state.profile = Object.fromEntries(payload.profile_fields.map((field) => [valueKey(field), field.value]));
     state.sources = payload.income_sources.map((sourceItem) => ({ ...sourceItem }));
+    state.evidence = {};
     state.audit = [];
     $("#session-empty").hidden = true;
     $("#session-content").hidden = false;
@@ -194,7 +274,7 @@ async function loadHousehold(householdId, source) {
 function downloadPacket() {
   if (!state.payload || !state.confirmed) return;
   const calculation = currentCalculation();
-  const readiness = state.payload.readiness;
+  const readiness = currentReadiness();
   const profile = state.payload.profile_fields.map((field) => ({ field: field.field, value: state.profile[valueKey(field)] ?? field.value, citation: { document_id: field.document_id, page: field.page, bbox: field.bbox } }));
   const packet = {
     title: "RealDoor application-readiness packet",
@@ -223,6 +303,7 @@ function deleteSession() {
   state.confirmed = false;
   state.profile = {};
   state.sources = [];
+  state.evidence = {};
   state.audit = [];
   state.consentAcknowledged = false;
   $("#session-content").hidden = true;
@@ -288,6 +369,7 @@ async function init() {
   });
   $("#confirm-profile").addEventListener("click", confirmProfile);
   $("#download-packet").addEventListener("click", downloadPacket);
+  $("#packet-note").addEventListener("input", renderPacketPreview);
   $("#delete-session").addEventListener("click", deleteSession);
   $("#question-form").addEventListener("submit", askQuestion);
   $("#open-consent").addEventListener("click", showConsent);

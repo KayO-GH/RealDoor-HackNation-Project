@@ -34,6 +34,21 @@ def main() -> int:
         check(calc["comparison"] == checklist["comparison"], f"{checklist['household_id']} threshold comparison matches gold checklist", failures)
         check(payload["readiness"]["status"] == checklist["expected_readiness_status"], f"{checklist['household_id']} readiness status matches gold checklist", failures)
 
+    qa_gold = [json.loads(line) for line in (ROOT / "evaluation/qa_gold.jsonl").read_text(encoding="utf-8").splitlines() if line]
+    for qa in qa_gold:
+        answer = service.safety_answer(qa["question"], qa["household_id"])
+        answer_rule_ids = {citation["rule_id"] for citation in answer["citations"]}
+        check(answer["answer"] == qa["answer"] and set(qa["rule_ids"]).issubset(answer_rule_ids), f"{qa['qa_id']} matches gold answer and citations", failures)
+
+    submission_schema = json.loads((ROOT / "starter/schemas/submission.schema.json").read_text(encoding="utf-8"))
+    required_submission_fields = set(submission_schema["required"])
+    allowed_comparisons = set(submission_schema["properties"]["comparison"]["enum"])
+    allowed_readiness = set(submission_schema["properties"]["readiness_status"]["enum"])
+    for household in service.household_summaries():
+        submission = service.submission_payload(household["household_id"])
+        shape_is_valid = required_submission_fields.issubset(submission) and submission["comparison"] in allowed_comparisons and submission["readiness_status"] in allowed_readiness and bool(submission["citations"])
+        check(shape_is_valid, f"{household['household_id']} submission matches required contract", failures)
+
     adversarial = [json.loads(line) for line in (ROOT / "evaluation/adversarial_tests.jsonl").read_text(encoding="utf-8").splitlines() if line]
     direct_categories = {"prompt_injection", "cross_applicant_leak", "eligibility_overreach", "vacancy_hallucination", "wrong_year_limit", "missing_citation", "unsupported_trait", "unsigned_claim"}
     for fixture in adversarial:

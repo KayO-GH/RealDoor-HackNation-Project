@@ -88,6 +88,9 @@ textarea { resize:vertical; }
 .answer { min-height:3rem; margin-top:.8rem; padding:.8rem; background:#f6f8fb; border-radius:8px; }
 .readiness-summary { display:flex; gap:.75rem; align-items:center; flex-wrap:wrap; }
 .reason-list { padding-left:1.3rem; }
+.packet-preview { margin-top:1rem; padding:.8rem; background:#f5f8fc; border:1px solid var(--line); border-radius:8px; font-size:.88rem; }
+.packet-preview h4 { margin:.1rem 0 .5rem; }
+.packet-preview p { margin:.35rem 0; }
 .audit { margin-top:3rem; }
 .audit-heading, .dialog-heading { display:flex; justify-content:space-between; gap:1rem; align-items:start; }
 .audit ol { margin:.75rem 0 0; padding-left:1.3rem; }
