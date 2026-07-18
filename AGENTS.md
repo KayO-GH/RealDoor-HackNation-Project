@@ -60,6 +60,15 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Incremental Version Control
+
+**Commit and push verified progress as work advances.**
+
+- Make focused, incremental commits after a coherent change is implemented and verified.
+- Push each verified commit to the active remote branch unless the user says not to.
+- Do not bundle unrelated changes into a commit; preserve other contributors' uncommitted work.
+- Before committing, inspect the staged diff and run the relevant checks.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
