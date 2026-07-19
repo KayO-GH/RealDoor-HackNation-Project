@@ -35,7 +35,9 @@ OpenAI data controls before accepting real renter documents.
 uv run uvicorn production_app:app --reload --port 8001
 ```
 
-Open `http://127.0.0.1:8001/app/`. The local client displays a development
+Open `http://127.0.0.1:8001/` for the **synthetic-only hackathon demo**. The
+real-document production prototype is isolated at `/production` and must not be
+used for the scored journey. The local production client displays a development
 magic-link token rather than sending email. AI extraction remains disabled until
 both `OPENAI_ENABLED=true` and `OPENAI_DATA_CONTROLS_APPROVED=true` are set.
 The API uses `store=false` and never uses OpenAI Files, Assistants, or vector

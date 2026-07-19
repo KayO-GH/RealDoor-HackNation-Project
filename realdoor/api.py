@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
@@ -10,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 
 from .production import RealDoorV1, Settings
+from .service import RealDoorService
 
 
 @lru_cache
@@ -17,8 +19,9 @@ def service() -> RealDoorV1:
     return RealDoorV1(Settings())
 
 
-app = FastAPI(title="RealDoor v1 API", version="1.0.0", description="Renter-controlled LIHTC readiness; never eligibility decisioning.")
-app.mount("/app", StaticFiles(directory="web/v1", html=True), name="v1-client")
+ROOT = Path(__file__).parents[1]
+DEMO_SERVICE = RealDoorService(ROOT)
+app = FastAPI(title="RealDoor", version="1.0.0", description="Synthetic-document LIHTC readiness; never eligibility decisioning.")
 
 
 def account(authorization: str = Header(default="")) -> str:
@@ -59,10 +62,41 @@ class ShareAccess(BaseModel):
     access_code: str = Field(pattern=r"^\d{8}$")
 
 
+class DemoQuestion(BaseModel):
+    question: str = Field(max_length=4096)
+    household: str | None = None
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     settings = Settings()
-    return {"status": "ok", "ai_mode": "enabled" if settings.openai_enabled and settings.openai_data_controls_approved else "review_only"}
+    return {"status": "ok", "mode": "synthetic_hackathon_demo", "production_ai_mode": "enabled" if settings.openai_enabled and settings.openai_data_controls_approved else "review_only"}
+
+
+@app.get("/api/households")
+def demo_households() -> list[dict]:
+    return DEMO_SERVICE.household_summaries()
+
+
+@app.get("/api/households/{household_id}")
+def demo_household(household_id: str) -> dict:
+    try:
+        return DEMO_SERVICE.household_payload(household_id.upper())
+    except KeyError as error:
+        raise HTTPException(404, "Unknown synthetic household.") from error
+
+
+@app.get("/api/consent")
+def demo_consent() -> dict:
+    return DEMO_SERVICE.consent_payload()
+
+
+@app.post("/api/ask")
+def demo_ask(body: DemoQuestion) -> dict:
+    household = body.household.strip().upper() if body.household else None
+    if household and household not in {item["household_id"] for item in DEMO_SERVICE.household_summaries()}:
+        raise HTTPException(404, "Unknown synthetic household.")
+    return DEMO_SERVICE.safety_answer(body.question, household)
 
 
 @app.post("/v1/auth/magic-links", status_code=202)
@@ -152,3 +186,10 @@ def revoke_share(household_id: str, share_id: str, account_id: str = Depends(acc
 @app.delete("/v1/account", status_code=204)
 def delete_account(account_id: str = Depends(account)) -> None:
     service().delete_account(account_id)
+
+
+# The root is the scored, synthetic-only demo. The real-document prototype is
+# deliberately isolated at /production and must not be used for the hackathon.
+app.mount("/documents", StaticFiles(directory=ROOT / "synthetic_documents" / "documents"), name="synthetic-documents")
+app.mount("/production", StaticFiles(directory=ROOT / "web" / "v1", html=True), name="production-client")
+app.mount("/", StaticFiles(directory=ROOT / "web", html=True), name="hackathon-client")
