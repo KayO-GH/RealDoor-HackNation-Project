@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="RealDoor is a local, renter-controlled application-readiness prototype.">
+    <title>RealDoor | Application readiness, not eligibility</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to main content</a>
+    <header class="site-header">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">R</span><span>RealDoor</span></div>
+      <p class="boundary">Application readiness, not eligibility</p>
+      <button class="text-button" id="delete-session" type="button">Delete session</button>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <section class="hero" aria-labelledby="hero-title">
+        <p class="eyebrow">Boston-Cambridge-Quincy HMFA · Frozen 2026 simulation</p>
+        <h1 id="hero-title">Prepare a cited housing packet with the renter in control.</h1>
+        <p>RealDoor extracts only allowlisted fields from supplied synthetic fixtures. You confirm every value before it is reused. A qualified human makes any program decision.</p>
+        <div class="hero-actions">
+          <button class="secondary-button" id="open-consent" type="button">How data is used</button>
+          <button class="secondary-button" id="open-features" type="button">Feature register</button>
+        </div>
+      </section>
+
+      <section class="notice" aria-label="Decision boundary">
+        <strong>Human decision boundary:</strong> this tool can show confirmed evidence, a frozen-rule comparison, and readiness reasons. It never labels a renter eligible, ineligible, approved, denied, or prioritized.
+      </section>
+
+      <nav class="stage-nav" aria-label="Application stages">
+        <a href="#profile"><span>01</span> Profile</a>
+        <a href="#understand"><span>02</span> Understand</a>
+        <a href="#prepare"><span>03</span> Prepare</a>
+      </nav>
+
+      <section class="onboarding panel" aria-labelledby="start-title">
+        <div>
+          <p class="eyebrow">Synthetic fixtures only</p>
+          <h2 id="start-title">Start a local session</h2>
+          <p>Choose a supplied household for the demo, or select its local PDFs. File contents are never uploaded; only known supplied fixture filenames are matched in this browser.</p>
+        </div>
+        <div class="controls">
+          <label class="consent-check" for="consent-check"><input id="consent-check" type="checkbox"> I understand the synthetic-data use and session-deletion controls.</label>
+          <label for="fixture-select">Demo household</label>
+          <select id="fixture-select" aria-describedby="fixture-help" disabled>
+            <option value="">Choose a synthetic household</option>
+          </select>
+          <p id="fixture-help" class="help-text">HH-001 is the recommended happy path. HH-005 demonstrates expired evidence; HH-002 demonstrates a conflict.</p>
+          <label class="upload-control" for="file-input">Choose supplied PDFs<input id="file-input" type="file" accept="application/pdf" multiple disabled></label>
+          <p class="help-text" id="upload-status">Acknowledge the local data-use summary to begin. No document contents are sent to the server.</p>
+        </div>
+      </section>
+
+      <div id="session-empty" class="empty-state" aria-live="polite">
+        Select a supplied synthetic household to begin the Profile stage.
+      </div>
+
+      <div id="session-content" hidden>
+        <section id="profile" class="stage" aria-labelledby="profile-title">
+          <div class="stage-heading"><p class="eyebrow">01 · Profile</p><h2 id="profile-title">Confirm the evidence before reuse</h2></div>
+          <div class="stage-layout">
+            <div class="panel">
+              <h3>Confirmed profile</h3>
+              <p class="help-text">Changes stay in this browser session. Editing any value marks the calculation as requiring confirmation.</p>
+              <form id="profile-form" novalidate></form>
+              <div class="form-actions"><button class="primary-button" id="confirm-profile" type="button">Confirm profile and calculation inputs</button><span id="profile-state" class="status pending" role="status">Confirmation required</span></div>
+            </div>
+            <aside class="panel evidence-summary" aria-labelledby="evidence-title">
+              <h3 id="evidence-title">Evidence policy</h3>
+              <ul>
+                <li><strong>High:</strong> native supplied fixture with a source box.</li>
+                <li><strong>Medium:</strong> rasterized supplied fixture with a source box.</li>
+                <li>Confidence describes evidence quality only. It never scores a renter.</li>
+                <li>Every value still requires renter confirmation.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="documents-heading"><h3>Document evidence</h3><p id="untrusted-summary" class="help-text"></p></div>
+          <div id="document-list" class="document-list"></div>
+        </section>
+
+        <section id="understand" class="stage muted-stage" aria-labelledby="understand-title">
+          <div class="stage-heading"><p class="eyebrow">02 · Understand</p><h2 id="understand-title">Use one frozen rule set and deterministic math</h2></div>
+          <div id="calculation-gate" class="notice warning" role="status">Confirm the profile to calculate from it.</div>
+          <div id="calculation-content" class="stage-layout" hidden>
+            <div class="panel">
+              <h3>Annualized income comparison</h3>
+              <div id="calculation-summary"></div>
+              <div id="income-source-list" class="source-list"></div>
+              <p class="boundary-inline">This is a numerical comparison under frozen challenge rules, not an eligibility decision.</p>
+            </div>
+            <aside class="panel">
+              <h3>Rule evidence</h3>
+              <div id="rule-citations"></div>
+            </aside>
+          </div>
+          <div class="panel question-panel">
+            <h3>Ask about the local rules</h3>
+            <form id="question-form">
+              <label for="question">Question</label>
+              <div class="question-row"><input id="question" name="question" placeholder="What is the frozen 60% threshold?" autocomplete="off"><button class="secondary-button" type="submit">Ask</button></div>
+            </form>
+            <div id="answer" class="answer" aria-live="polite">Answers will include source citations or a safety boundary.</div>
+          </div>
+        </section>
+
+        <section id="prepare" class="stage" aria-labelledby="prepare-title">
+          <div class="stage-heading"><p class="eyebrow">03 · Prepare</p><h2 id="prepare-title">Preview, edit, download, or delete your packet</h2></div>
+          <div class="stage-layout">
+            <div class="panel">
+              <h3>Readiness review</h3>
+              <div id="readiness-content"></div>
+              <p class="help-text">The 60-day current-document convention is a frozen challenge rule, not a universal LIHTC requirement.</p>
+            </div>
+            <div class="panel">
+              <h3>Renter-controlled packet</h3>
+              <label for="packet-note">Renter note (optional)</label>
+              <textarea id="packet-note" rows="5" placeholder="Add a note for a qualified human reviewer."></textarea>
+              <div id="packet-preview" class="packet-preview" aria-live="polite"></div>
+              <div class="form-actions"><button class="primary-button" id="download-packet" type="button" disabled>Download readiness packet</button><span class="status neutral">Never auto-sent</span></div>
+              <p class="help-text">The packet is downloaded only when you choose. RealDoor does not send it to a property or provider.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="audit panel" aria-labelledby="audit-title">
+          <div class="audit-heading"><div><p class="eyebrow">Local session</p><h2 id="audit-title">Action log</h2></div><p class="help-text">Records action type and frozen rule version; never raw document contents.</p></div>
+          <ol id="audit-list"></ol>
+        </section>
+      </div>
+    </main>
+
+    <dialog id="consent-dialog" aria-labelledby="consent-title"><div class="dialog-content"><div class="dialog-heading"><h2 id="consent-title">Consent and data use</h2><button class="icon-button" data-close="consent-dialog" type="button" aria-label="Close">×</button></div><div id="consent-content"></div><button class="primary-button" data-close="consent-dialog" type="button">I understand</button></div></dialog>
+    <dialog id="feature-dialog" aria-labelledby="feature-title"><div class="dialog-content"><div class="dialog-heading"><h2 id="feature-title">Feature register</h2><button class="icon-button" data-close="feature-dialog" type="button" aria-label="Close">×</button></div><div id="feature-content"></div><button class="primary-button" data-close="feature-dialog" type="button">Close</button></div></dialog>
+    <div id="live-status" class="sr-only" aria-live="assertive"></div>
+    <script src="app.js"></script>
+  </body>
+</html>

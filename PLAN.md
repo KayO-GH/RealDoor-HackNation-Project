@@ -20,6 +20,11 @@ Ship a strong, credible submission for Challenge 3: a renter-side copilot that t
 - The build should work from the local repo and supplied assets first; no core step should depend on an external service being available during the demo.
 - If a hosted model or API is used, it is an optimization layer only, not a hard dependency for the product flow.
 
+## Development Environment
+- Keep the prototype dependency-free where practical.
+- If an isolated environment or third-party package becomes necessary, use `uv` to create and manage it; do not use a global package installation.
+- Record any added dependency, its purpose, and its offline/demo fallback in the architecture and risk note.
+
 ## Credit Assumptions
 - The plan assumes the team can use the hackathon credits associated with the chosen sponsor track when needed.
 - Credits should be reserved for the steps that most improve demo quality: document extraction, cited rule answering, and any model-assisted summarization.
