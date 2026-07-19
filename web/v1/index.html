@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RealDoor v1 | Readiness, not eligibility</title>
+    <link rel="stylesheet" href="app.css">
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Boston-Cambridge-Quincy LIHTC readiness</p>
+      <h1>Prepare an evidence packet you control.</h1>
+      <p class="boundary">RealDoor explains confirmed evidence and cited rules. A qualified human makes any program decision.</p>
+      <section aria-labelledby="sign-in"><h2 id="sign-in">Sign in</h2><label>Email <input id="email" type="email" autocomplete="email"></label><button id="request-link">Send magic link</button><label id="dev-link" hidden>Development sign-in token <input id="token"></label><button id="verify-link" hidden>Sign in</button></section>
+      <section id="household-panel" hidden aria-labelledby="household-title"><h2 id="household-title">Your household packet</h2><label>Household label <input id="household-name" value="My household"></label><label><input id="authority" type="checkbox"> I may upload evidence for this household.</label><button id="create-household">Create packet</button><div id="upload-panel" hidden><label>Document type <select id="document-type"><option value="pay_stub">Pay stub</option><option value="employment_letter">Employment letter</option><option value="benefit_letter">Benefit letter</option><option value="gig_statement">Gig statement</option><option value="application_summary">Application summary</option></select></label><label>PDF, PNG, or JPEG <input id="document" type="file" accept="application/pdf,image/png,image/jpeg"></label><button id="upload">Upload for review</button></div></section>
+      <section id="review-panel" hidden aria-labelledby="review-title"><h2 id="review-title">Review evidence</h2><p>Confirm candidate values before they can appear in your packet.</p><div id="fields"></div><button id="create-packet">Create readiness packet</button><pre id="packet" aria-live="polite"></pre><button id="share" hidden>Create 7-day share link</button><pre id="share-result" aria-live="polite"></pre></section>
+      <p id="status" role="status" aria-live="polite"></p>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>

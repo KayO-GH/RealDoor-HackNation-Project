@@ -24,6 +24,23 @@ Open `http://127.0.0.1:8000`. To use a different local port:
 REALDOOR_PORT=8001 python3 app.py
 ```
 
+## Run the v1 Product MVP
+
+The production-oriented MVP has a separate authenticated API and accessible web
+client. It uses a local SQLite vault only for development; configure managed
+Postgres, private encrypted object storage, transactional email, and approved
+OpenAI data controls before accepting real renter documents.
+
+```bash
+uv run uvicorn production_app:app --reload --port 8001
+```
+
+Open `http://127.0.0.1:8001/app/`. The local client displays a development
+magic-link token rather than sending email. AI extraction remains disabled until
+both `OPENAI_ENABLED=true` and `OPENAI_DATA_CONTROLS_APPROVED=true` are set.
+The API uses `store=false` and never uses OpenAI Files, Assistants, or vector
+stores for renter documents.
+
 The app requires a renter acknowledgement before loading a supplied synthetic fixture. It does not upload raw PDFs: the browser maps supplied synthetic filenames to organizer-provided fixture metadata. Use HH-001 for the happy path, HH-005 for expired evidence, and HH-002 for conflicting income evidence.
 
 ## Verify Before a Demo or Commit
