@@ -61,10 +61,12 @@ def _local_evidence():
         return _json({"error": "Choose one to four exact supplied synthetic PDFs for one household."}, HTTPStatus.BAD_REQUEST)
 
 
-@app.route("/api", methods=["GET", "POST"])
-def handler():
-    """Dispatch the original path supplied by the Vercel route capture."""
-    path = request.args.get("path", "").strip("/")
+@app.route("/api", defaults={"path": ""}, methods=["GET", "POST"])
+@app.route("/api/", defaults={"path": ""}, methods=["GET", "POST"])
+@app.route("/api/<path:path>", methods=["GET", "POST"])
+def handler(path: str):
+    """Dispatch the original path preserved by the Vercel catch-all route."""
+    path = path.strip("/")
     if request.method == "POST":
         if path == "api/local-evidence":
             return _local_evidence()

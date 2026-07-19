@@ -7,7 +7,7 @@
     }
   },
   "routes": [
-    { "src": "/(.*)", "dest": "/api?path=$1" }
+    { "src": "/(.*)", "dest": "/api/$1" }
   ],
   "headers": [
     {
