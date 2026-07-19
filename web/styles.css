@@ -96,9 +96,12 @@ textarea { resize:vertical; }
 .source-preview-heading .help-text { margin:.25rem 0 0; }
 .document-source-preview .inline-rendered-source { margin:.75rem 0 0; }
 .doc-meta { display:flex; justify-content:space-between; gap:.5rem; color:var(--muted); font-size:.8rem; }
-.field-table { width:100%; margin-top:.75rem; border-collapse:collapse; font-size:.84rem; }
+.field-table { width:100%; margin-top:.75rem; border-collapse:collapse; table-layout:fixed; font-size:.84rem; }
 .field-table th, .field-table td { padding:.45rem .25rem; vertical-align:top; text-align:left; border-top:1px solid #e5eaf1; }
-.field-table th:last-child, .field-table td:last-child { width:9rem; padding-left:1rem; }
+.field-table .source-evidence-column { width:10.5rem; }
+.field-table th:last-child, .field-table td:last-child { padding-left:1.25rem; }
+.field-table td:first-child { min-width:0; }
+.field-table td:first-child input { width:calc(100% - 2rem); }
 .field-table th { color:var(--muted); font-weight:700; }
 .evidence-link { font-size:.82rem; }
 .untrusted { margin:.7rem 0 0; color:#8b4b00; font-size:.85rem; font-weight:650; }

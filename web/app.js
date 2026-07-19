@@ -185,7 +185,7 @@ function renderDocuments() {
             <h5>Confirm values</h5><p class="help-text">Edit a transcription if needed, then confirm the current inputs here.</p>
             ${document.contains_untrusted_content ? `<p class="untrusted">${escapeHtml(document.untrusted_content_handling)}</p>` : ""}
             ${document.extraction_status === "abstained" ? `<p class="abstention"><strong>Extraction abstained:</strong> ${escapeHtml(document.abstention_reason)}</p>` : ""}
-            <table class="field-table"><thead><tr><th>Allowlisted field</th><th>Source evidence</th></tr></thead><tbody>${document.fields.map((field) => {
+            <table class="field-table"><colgroup><col><col class="source-evidence-column"></colgroup><thead><tr><th>Allowlisted field</th><th>Source evidence</th></tr></thead><tbody>${document.fields.map((field) => {
         const key = evidenceKey(document.document_id, field.field);
         const value = state.evidence[key] ?? field.value;
         const confirmation = state.confirmed ? "confirmed for this session" : state.evidence[key] === undefined ? "pending; renter confirmation required" : "corrected; renter confirmation required";
