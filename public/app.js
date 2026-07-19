@@ -7,7 +7,8 @@ const state = {
   audit: [],
   consent: null,
   consentAcknowledged: false,
-  focusedEvidenceKey: null,
+  expandedDocuments: new Set(),
+  lastSourceTrigger: null,
   baselineCalculation: null,
 };
 
@@ -83,47 +84,49 @@ function renderDocuments() {
   const untrustedCount = state.payload.documents.filter((document) => document.contains_untrusted_content).length;
   $("#untrusted-summary").textContent = untrustedCount ? `${untrustedCount} supplied fixture(s) contained untrusted text. It was ignored and never shown as an instruction.` : "All displayed values are allowlisted fields only.";
   $("#document-list").innerHTML = state.payload.documents.map((document) => `
-    <article class="document-card">
-      <div class="doc-meta"><span>${escapeHtml(document.document_type.replaceAll("_", " "))}</span><span>${escapeHtml(document.document_id)}</span></div>
-      <h4>${escapeHtml(document.file_name)}</h4>
-      <a class="evidence-link" href="${escapeHtml(document.preview_url)}" target="_blank" rel="noreferrer">Open original synthetic PDF</a>
-      ${sourceMapMarkup(document)}
+    <details class="evidence-accordion" data-document-id="${escapeHtml(document.document_id)}" ${state.expandedDocuments.has(document.document_id) ? "open" : ""}>
+      <summary>
+        <span class="document-summary-title"><span class="eyebrow">${escapeHtml(document.document_type.replaceAll("_", " "))}</span><strong>${escapeHtml(document.file_name)}</strong></span>
+        <span class="document-summary-metrics"><span>${document.fields.length} allowlisted fields</span><span>${document.page_count} page${document.page_count === 1 ? "" : "s"}</span><span class="status ${document.fields.every((field) => field.confidence === "high") ? "ready" : "pending"}">${document.fields.every((field) => field.confidence === "high") ? "high confidence" : "medium confidence"}</span></span>
+      </summary>
+      <div class="document-card">
+      <div class="document-card-heading"><div><h4>${escapeHtml(document.document_id)}</h4><p class="help-text">${document.page_count} page supplied synthetic PDF · ${document.fields.length} evidence locations</p></div><a class="evidence-link" href="${escapeHtml(document.preview_url)}" target="_blank" rel="noreferrer">Open original PDF</a></div>
       ${document.contains_untrusted_content ? `<p class="untrusted">${escapeHtml(document.untrusted_content_handling)}</p>` : ""}
       <table class="field-table"><thead><tr><th>Allowlisted field</th><th>Source evidence</th></tr></thead><tbody>${document.fields.map((field) => {
         const key = evidenceKey(document.document_id, field.field);
         const value = state.evidence[key] ?? field.value;
         const confirmation = state.evidence[key] === undefined ? "pending" : "corrected";
-        const focused = state.focusedEvidenceKey === key;
-        return `<tr id="evidence-row-${escapeHtml(key)}" class="${focused ? "evidence-focused" : ""}"><td><label for="evidence-${escapeHtml(key)}"><strong>${escapeHtml(field.field.replaceAll("_", " "))}</strong></label><input id="evidence-${escapeHtml(key)}" data-evidence-document="${escapeHtml(document.document_id)}" data-evidence-field="${escapeHtml(field.field)}" value="${escapeHtml(value)}" aria-describedby="evidence-meta-${escapeHtml(key)}"><span id="evidence-meta-${escapeHtml(key)}" class="field-meta">${escapeHtml(field.purpose)} · ${escapeHtml(confirmation)}; renter confirmation required</span></td><td>p. ${field.page}<br>box [${field.bbox.join(", ")}]<br><button class="source-locate" type="button" data-focus-evidence="${escapeHtml(key)}">${focused ? "Source highlighted" : "Locate source"}</button><br><span class="status ${field.confidence === "high" ? "ready" : "pending"}">${escapeHtml(field.confidence)}</span></td></tr>`;
+        return `<tr><td><label for="evidence-${escapeHtml(key)}"><strong>${escapeHtml(field.field.replaceAll("_", " "))}</strong></label><input id="evidence-${escapeHtml(key)}" data-evidence-document="${escapeHtml(document.document_id)}" data-evidence-field="${escapeHtml(field.field)}" value="${escapeHtml(value)}" aria-describedby="evidence-meta-${escapeHtml(key)}"><span id="evidence-meta-${escapeHtml(key)}" class="field-meta">${escapeHtml(field.purpose)} · ${escapeHtml(confirmation)}; renter confirmation required</span></td><td><span class="field-meta">page ${field.page} · source box</span><br><button class="source-locate" type="button" data-source-document="${escapeHtml(document.document_id)}" data-source-field="${escapeHtml(field.field)}">Locate source</button><br><span class="status ${field.confidence === "high" ? "ready" : "pending"}">${escapeHtml(field.confidence)}</span></td></tr>`;
       }).join("")}</tbody></table>
-    </article>`).join("");
+      </div>
+    </details>`).join("");
   $("#document-list").querySelectorAll("input[data-evidence-document]").forEach((input) => input.addEventListener("input", () => {
     applyEvidenceCorrection(input.dataset.evidenceDocument, input.dataset.evidenceField, input.value);
   }));
-  $("#document-list").querySelectorAll("[data-focus-evidence]").forEach((button) => button.addEventListener("click", () => focusEvidence(button.dataset.focusEvidence)));
-  $("#document-list").querySelectorAll("[data-source-evidence]").forEach((button) => button.addEventListener("click", () => focusEvidence(button.dataset.sourceEvidence)));
+  $("#document-list").querySelectorAll("details[data-document-id]").forEach((details) => details.addEventListener("toggle", () => {
+    if (details.open) state.expandedDocuments.add(details.dataset.documentId);
+    else state.expandedDocuments.delete(details.dataset.documentId);
+  }));
+  $("#document-list").querySelectorAll("[data-source-document]").forEach((button) => button.addEventListener("click", () => openSourceDrawer(button.dataset.sourceDocument, button.dataset.sourceField, button)));
 }
 
-function sourceMapMarkup(document) {
-  return `<figure class="source-map"><figcaption>Page 1 evidence-box map. Select a box or field control to connect the allowlisted value to its source location.</figcaption><div class="source-page" role="group" aria-label="Page 1 source-box map for ${escapeHtml(document.document_id)}">${document.fields.map((field) => {
-    const [x1, y1, x2, y2] = field.bbox;
-    const left = (x1 / 612) * 100;
-    const top = ((792 - y2) / 792) * 100;
-    const width = Math.max(((x2 - x1) / 612) * 100, 1.2);
-    const height = Math.max(((y2 - y1) / 792) * 100, 1.2);
-    const key = evidenceKey(document.document_id, field.field);
-    const focused = state.focusedEvidenceKey === key;
-    return `<button class="source-box ${focused ? "source-box-focused" : ""}" type="button" data-source-evidence="${escapeHtml(key)}" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;" aria-label="Locate ${escapeHtml(field.field.replaceAll("_", " "))}: page ${field.page}, box ${field.bbox.join(", ")}" title="${escapeHtml(field.field)} · page ${field.page} · box [${field.bbox.join(", ")}]"></button>`;
-  }).join("")}</div></figure>`;
-}
-
-function focusEvidence(key) {
-  state.focusedEvidenceKey = key;
-  renderDocuments();
-  const row = document.getElementById(`evidence-row-${key}`);
-  row?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  row?.querySelector("input")?.focus({ preventScroll: true });
-  announce("Source box highlighted for the selected allowlisted field.");
+function openSourceDrawer(documentId, fieldName, trigger) {
+  const sourceDocument = state.payload.documents.find((document) => document.document_id === documentId);
+  const sourceField = sourceDocument?.fields.find((field) => field.field === fieldName);
+  if (!sourceDocument || !sourceField) return;
+  const [x1, y1, x2, y2] = sourceField.bbox;
+  const left = (x1 / 612) * 100;
+  const top = ((792 - y2) / 792) * 100;
+  const width = Math.max(((x2 - x1) / 612) * 100, 1.2);
+  const height = Math.max(((y2 - y1) / 792) * 100, 1.2);
+  const imageUrl = sourceDocument.preview_image_url || sourceDocument.preview_url.replace(/\.pdf$/i, ".png").replace("/documents/", "/previews/");
+  state.lastSourceTrigger = trigger;
+  $("#source-drawer-title").textContent = sourceField.field.replaceAll("_", " ");
+  $("#source-drawer-body").innerHTML = `<div class="source-drawer-meta"><strong>${escapeHtml(sourceDocument.file_name)}</strong><span>Page ${sourceField.page} · ${escapeHtml(sourceField.confidence)} confidence</span><span>${escapeHtml(sourceField.purpose)}</span></div><figure class="rendered-source"><div class="rendered-page"><img src="${escapeHtml(imageUrl)}" alt="Rendered page ${sourceField.page} of ${escapeHtml(sourceDocument.file_name)}"><span class="source-highlight" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;" aria-hidden="true"></span></div><figcaption>The amber highlight marks the exact allowlisted source value. It is not an inference or decision signal.</figcaption></figure><div class="form-actions"><a class="secondary-button" href="${escapeHtml(sourceDocument.preview_url)}" target="_blank" rel="noreferrer">Open original PDF</a><span class="field-meta">source box [${sourceField.bbox.join(", ")}]</span></div>`;
+  const drawer = $("#source-drawer");
+  drawer.showModal();
+  drawer.querySelector("[data-close]")?.focus();
+  announce(`Opened rendered source evidence for ${sourceField.field.replaceAll("_", " ")}.`);
 }
 
 function fieldValueFromEvidence(documentId, field) {
@@ -317,7 +320,7 @@ async function loadHousehold(householdId, source) {
     state.profile = Object.fromEntries(payload.profile_fields.map((field) => [valueKey(field), field.value]));
     state.sources = payload.income_sources.map((sourceItem) => ({ ...sourceItem }));
     state.evidence = {};
-    state.focusedEvidenceKey = null;
+    state.expandedDocuments = new Set();
     state.baselineCalculation = currentCalculation();
     state.audit = [];
     $("#session-empty").hidden = true;
@@ -467,6 +470,7 @@ async function init() {
   $("#open-consent").addEventListener("click", showConsent);
   $("#open-features").addEventListener("click", showFeatures);
   document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => $(`#${button.dataset.close}`).close()));
+  $("#source-drawer").addEventListener("close", () => state.lastSourceTrigger?.focus());
 }
 
 init().catch((error) => {

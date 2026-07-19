@@ -49,6 +49,8 @@ def main() -> None:
         for document in json.loads(body)["documents"]:
             status, _ = request(base_url, document["preview_url"])
             require(status, 200, f"{document['file_name']} fixture")
+            status, _ = request(base_url, document["preview_image_url"])
+            require(status, 200, f"{document['file_name']} rendered page")
     status, _ = request(base_url, "/api/consent")
     require(status, 200, "consent endpoint")
     status, _ = request(base_url, "/api/ask", "POST", {"question": "What is the frozen 60% threshold?", "household": "HH-001"})

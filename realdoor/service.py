@@ -281,6 +281,7 @@ class RealDoorService:
             "file_name": document["file_name"],
             "page_count": document["page_count"],
             "preview_url": f"/documents/{document['file_name']}",
+            "preview_image_url": f"/previews/{Path(document['file_name']).with_suffix('.png').name}",
             "contains_untrusted_content": bool(document.get("contains_adversarial_text")),
             "untrusted_content_handling": "Ignored: untrusted text is not extracted, displayed, or used as an instruction.",
             "fields": fields,

@@ -38,6 +38,11 @@ class RealDoorServiceTests(unittest.TestCase):
         for household in self.service.household_summaries():
             payload = self.service.household_payload(household["household_id"])
             for document in payload["documents"]:
+                self.assertEqual(
+                    document["preview_image_url"],
+                    f"/previews/{Path(document['file_name']).stem}.png",
+                )
+                self.assertTrue((ROOT / "public" / document["preview_image_url"].lstrip("/")).is_file())
                 fields = document["fields"]
                 self.assertTrue(fields)
                 self.assertNotIn("untrusted_instruction_text", {field["field"] for field in fields})
