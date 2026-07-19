@@ -180,16 +180,22 @@ function renderDocuments() {
       <summary><span class="document-summary-title"><span class="eyebrow">${escapeHtml(document.document_type.replaceAll("_", " "))}</span><strong>${escapeHtml(document.file_name)}</strong></span><span class="document-summary-metrics"><span>${document.fields.length} recovered fields</span><span>${document.page_count} page${document.page_count === 1 ? "" : "s"}</span><span class="status ${document.extraction_status === "abstained" ? "needs-review" : document.fields.every((field) => field.confidence === "high") ? "ready" : "pending"}">${document.extraction_status === "abstained" ? "abstained" : document.fields.every((field) => field.confidence === "high") ? "high confidence" : "review evidence"}</span></span></summary>
       <article class="document-card">
         <div class="document-card-heading"><div><h4>${escapeHtml(document.document_id)}</h4><p class="field-meta">${escapeHtml(document.extraction_engine ? `Parsed by ${document.extraction_engine.replaceAll("_", " ")}` : "Organizer evidence fixture")}</p></div><a class="evidence-link" href="${escapeHtml(servedPath(document.preview_url))}" target="_blank" rel="noreferrer">Open original synthetic PDF</a></div>
-        ${documentSourcePreviewMarkup(document)}
-      ${document.contains_untrusted_content ? `<p class="untrusted">${escapeHtml(document.untrusted_content_handling)}</p>` : ""}
-      ${document.extraction_status === "abstained" ? `<p class="abstention"><strong>Extraction abstained:</strong> ${escapeHtml(document.abstention_reason)}</p>` : ""}
-      <table class="field-table"><thead><tr><th>Allowlisted field</th><th>Source evidence</th></tr></thead><tbody>${document.fields.map((field) => {
+        <div class="document-evidence-split">
+          <section class="document-fields" aria-label="Recovered fields">
+            ${document.contains_untrusted_content ? `<p class="untrusted">${escapeHtml(document.untrusted_content_handling)}</p>` : ""}
+            ${document.extraction_status === "abstained" ? `<p class="abstention"><strong>Extraction abstained:</strong> ${escapeHtml(document.abstention_reason)}</p>` : ""}
+            <table class="field-table"><thead><tr><th>Allowlisted field</th><th>Source evidence</th></tr></thead><tbody>${document.fields.map((field) => {
         const key = evidenceKey(document.document_id, field.field);
         const value = state.evidence[key] ?? field.value;
         const confirmation = state.confirmed ? "confirmed for this session" : state.evidence[key] === undefined ? "pending; renter confirmation required" : "corrected; renter confirmation required";
         const sourceDetails = field.page ? `p. ${field.page}<br>${field.bbox ? `box [${field.bbox.join(", ")}]<br>` : ""}` : "No precise source box recovered<br>";
           return `<tr id="evidence-row-${escapeHtml(key)}" class="${state.highlightedEvidenceKey === key ? "evidence-highlighted" : ""}"><td><label for="evidence-${escapeHtml(key)}"><strong>${escapeHtml(field.field.replaceAll("_", " "))}</strong></label><input id="evidence-${escapeHtml(key)}" data-evidence-document="${escapeHtml(document.document_id)}" data-evidence-field="${escapeHtml(field.field)}" value="${escapeHtml(value)}" aria-describedby="evidence-meta-${escapeHtml(key)}"><span id="evidence-meta-${escapeHtml(key)}" class="field-meta">${escapeHtml(field.purpose)} · ${escapeHtml(confirmation)}</span></td><td>${sourceDetails}${field.bbox ? `<button class="source-locate" type="button" data-highlight-document="${escapeHtml(document.document_id)}" data-highlight-field="${escapeHtml(field.field)}">Highlight</button> <button class="source-locate" type="button" data-open-field-source="${escapeHtml(document.document_id)}" data-source-field="${escapeHtml(field.field)}">View</button><br>` : ""}<span class="status ${field.confidence === "high" ? "ready" : "pending"}">${escapeHtml(field.confidence)}</span></td></tr>`;
-      }).join("")}</tbody></table>${state.changedDocumentIds.has(document.document_id) ? `<div class="form-actions document-confirm-action"><button class="primary-button" type="button" data-confirm-document="${escapeHtml(document.document_id)}">Confirm changes</button><span class="field-meta">Confirms all current profile and evidence inputs.</span></div>` : ""}
+            }).join("")}</tbody></table>${state.changedDocumentIds.has(document.document_id) ? `<div class="form-actions document-confirm-action"><button class="primary-button" type="button" data-confirm-document="${escapeHtml(document.document_id)}">Confirm changes</button><span class="field-meta">Confirms all current profile and evidence inputs.</span></div>` : ""}
+          </section>
+          <aside class="document-source-preview" aria-label="Rendered source PDF">
+            ${documentSourcePreviewMarkup(document)}
+          </aside>
+        </div>
       </article>
     </details>`).join("");
   $("#document-list").querySelectorAll("input[data-evidence-document]").forEach((input) => input.addEventListener("input", () => {
