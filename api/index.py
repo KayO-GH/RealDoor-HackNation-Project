@@ -24,6 +24,14 @@ SERVICE = RealDoorService(ROOT)
 app = Flask(__name__)
 
 
+@app.after_request
+def add_security_headers(response: Response) -> Response:
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    return response
+
+
 def _json(payload: dict | list, status: HTTPStatus = HTTPStatus.OK):
     response = jsonify(payload)
     response.status_code = status
