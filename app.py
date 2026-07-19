@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import mimetypes
 import os
@@ -27,7 +28,15 @@ class AppHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/households":
             return self._json(SERVICE.household_summaries())
+        if parsed.path == "/api/properties":
+            return self._json(SERVICE.property_context())
         if parsed.path.startswith("/api/households/"):
+            if parsed.path.endswith("/local-evidence"):
+                household_id = parsed.path.removesuffix("/local-evidence").rsplit("/", 1)[-1].upper()
+                try:
+                    return self._json(SERVICE.local_evidence_payload(household_id))
+                except KeyError:
+                    return self._json({"error": "Unknown synthetic household."}, HTTPStatus.NOT_FOUND)
             household_id = parsed.path.rsplit("/", 1)[-1].upper()
             try:
                 return self._json(SERVICE.household_payload(household_id))
@@ -46,7 +55,10 @@ class AppHandler(BaseHTTPRequestHandler):
         return self._file(STATIC_ROOT, parsed.path.removeprefix("/"))
 
     def do_POST(self):  # noqa: N802
-        if urlparse(self.path).path != "/api/ask":
+        path = urlparse(self.path).path
+        if path == "/api/local-evidence":
+            return self._local_evidence()
+        if path != "/api/ask":
             return self.send_error(HTTPStatus.NOT_FOUND)
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -69,6 +81,27 @@ class AppHandler(BaseHTTPRequestHandler):
             except KeyError:
                 return self._json({"error": "Unknown synthetic household."}, HTTPStatus.NOT_FOUND)
         return self._json(SERVICE.safety_answer(question, household))
+
+    def _local_evidence(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 1 or length > 2_000_000:
+                raise ValueError
+            payload = json.loads(self.rfile.read(length))
+            uploads = payload.get("files") if isinstance(payload, dict) else None
+            if not isinstance(uploads, list) or not 1 <= len(uploads) <= 4:
+                raise ValueError
+            decoded = []
+            for upload in uploads:
+                if not isinstance(upload, dict) or not isinstance(upload.get("file_name"), str) or not isinstance(upload.get("content_base64"), str):
+                    raise ValueError
+                pdf_bytes = base64.b64decode(upload["content_base64"], validate=True)
+                if not 1 <= len(pdf_bytes) <= 400_000:
+                    raise ValueError
+                decoded.append({"file_name": upload["file_name"], "bytes": pdf_bytes})
+            return self._json(SERVICE.uploaded_local_evidence_payload(decoded))
+        except (ValueError, TypeError, UnicodeDecodeError):
+            return self._json({"error": "Choose one to four exact supplied synthetic PDFs for one household."}, HTTPStatus.BAD_REQUEST)
 
     def _json(self, payload, status=HTTPStatus.OK):
         body = json.dumps(payload).encode("utf-8")
