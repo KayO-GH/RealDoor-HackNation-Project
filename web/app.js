@@ -85,6 +85,14 @@ function localDocumentStatus(documentId) {
   return state.localEvidence?.documents.find((item) => item.document_id === documentId)?.extraction_status || null;
 }
 
+function extractionEngineLabel(document) {
+  return document.extraction_engine === "local_tesseract_ocr_v1" ? "Local Tesseract OCR" : "Local PDF text extraction";
+}
+
+function evidenceRecoveryLabel(fields) {
+  return fields.some((field) => field.extraction_method === "ocr") ? "Local OCR" : "Local parser";
+}
+
 function profileSourceField(field) {
   return localEvidenceField(field.document_id, field.field) || field;
 }
@@ -113,7 +121,7 @@ function hydrateCalculationSource(source) {
         amount: Math.round(Number(hours.value) * Number(rate.value) * 100) / 100,
         frequency: frequency.value,
         evidence_state: "recovered",
-        evidence_detail: "Local parser recovered the documented hours, hourly rate, and explicit frequency used by the frozen calculation.",
+        evidence_detail: `${evidenceRecoveryLabel([hours, rate, frequency])} recovered the documented hours, hourly rate, and explicit frequency used by the frozen calculation.`,
         evidence_citations: [hours, rate, frequency],
       };
     }
@@ -127,7 +135,7 @@ function hydrateCalculationSource(source) {
         amount: amount.value,
         frequency: frequency.value,
         evidence_state: "recovered",
-        evidence_detail: "Local parser recovered the documented recurring benefit and explicit frequency used by the frozen calculation.",
+        evidence_detail: `${evidenceRecoveryLabel([amount, frequency])} recovered the documented recurring benefit and explicit frequency used by the frozen calculation.`,
         evidence_citations: [amount, frequency],
       };
     }
@@ -139,7 +147,7 @@ function hydrateCalculationSource(source) {
         ...source,
         amount: amount.value,
         evidence_state: "recovered",
-        evidence_detail: "Local parser recovered the monthly statement amount used by the frozen calculation.",
+        evidence_detail: `${evidenceRecoveryLabel([amount])} recovered the monthly statement amount used by the frozen calculation.`,
         evidence_citations: [amount],
       };
     }
@@ -161,7 +169,8 @@ function renderProfile() {
     const source = profileSourceField(field);
     const local = localEvidenceField(field.document_id, field.field);
     const sourceBox = source.bbox ? `box [${source.bbox.join(", ")}]` : "no source box";
-    const sourceDescription = `${field.document_id} · page ${source.page ?? "not recovered"} · ${sourceBox} · ${source.confidence || "needs review"} confidence${local ? " · local parser candidate" : " · not recovered; frozen fixture reference only"}`;
+    const ocrDetail = source.extraction_method === "ocr" ? ` · OCR candidate · ${source.ocr_confidence}% token confidence` : "";
+    const sourceDescription = `${field.document_id} · page ${source.page ?? "not recovered"} · ${sourceBox} · ${source.confidence || "needs review"} confidence${ocrDetail}${local ? " · local evidence candidate" : " · not recovered; frozen fixture reference only"}`;
     return `<div class="field-control"><label for="profile-${escapeHtml(key)}">${escapeHtml(field.field.replaceAll("_", " "))}</label><input id="profile-${escapeHtml(key)}" data-profile-key="${escapeHtml(key)}" ${type === "number" ? "min=1 max=99 step=1" : ""} type="${type}" value="${escapeHtml(value)}"><span class="field-meta field-source-meta"><button class="source-meta-button tooltip-button" type="button" data-open-profile-source="${escapeHtml(field.document_id)}" data-open-profile-field="${escapeHtml(field.field)}" aria-label="Open source details for ${escapeHtml(field.field.replaceAll("_", " "))}" data-tooltip="${escapeHtml(sourceDescription)}"><span aria-hidden="true">▣</span></button><span>${escapeHtml(local ? `${source.confidence || "needs review"} confidence` : "evidence not recovered")}</span></span></div>`;
   }).join("")}</div>`;
   $("#profile-form").querySelectorAll("input").forEach((input) => input.addEventListener("input", () => {
@@ -179,20 +188,21 @@ function renderDocuments() {
   $("#untrusted-summary").textContent = untrustedCount ? `${untrustedCount} supplied fixture(s) contained untrusted text. It was ignored and never shown as an instruction.` : "All displayed values are allowlisted fields only.";
   $("#document-list").innerHTML = documents.map((document) => `
     <details class="evidence-accordion" data-document-id="${escapeHtml(document.document_id)}" ${state.expandedDocuments.has(document.document_id) ? "open" : ""}>
-      <summary><span class="document-summary-title"><span class="eyebrow">${escapeHtml(document.document_type.replaceAll("_", " "))}</span><strong>${escapeHtml(document.file_name)}</strong></span><span class="document-summary-metrics"><span class="metric-icon tooltip-button" aria-label="${document.fields.length} recovered fields" data-tooltip="${document.fields.length} recovered fields" tabindex="0" role="img">▤</span><span class="metric-icon tooltip-button" aria-label="${document.page_count} page${document.page_count === 1 ? "" : "s"}" data-tooltip="${document.page_count} page${document.page_count === 1 ? "" : "s"}" tabindex="0" role="img">▯</span><span class="status ${document.extraction_status === "abstained" ? "needs-review" : document.fields.every((field) => field.confidence === "high") ? "ready" : "pending"}">${document.extraction_status === "abstained" ? "abstained" : document.fields.every((field) => field.confidence === "high") ? "high confidence" : "review evidence"}</span></span></summary>
+      <summary><span class="document-summary-title"><span class="eyebrow">${escapeHtml(document.document_type.replaceAll("_", " "))}</span><strong>${escapeHtml(document.file_name)}</strong></span><span class="document-summary-metrics"><span class="metric-icon tooltip-button" aria-label="${document.fields.length} recovered fields" data-tooltip="${document.fields.length} recovered fields" tabindex="0" role="img">▤</span><span class="metric-icon tooltip-button" aria-label="${document.page_count} page${document.page_count === 1 ? "" : "s"}" data-tooltip="${document.page_count} page${document.page_count === 1 ? "" : "s"}" tabindex="0" role="img">▯</span><span class="status ${document.extraction_status === "extracted" && document.fields.every((field) => field.confidence === "high") ? "ready" : "pending"}">${document.extraction_status === "abstained" ? "abstained" : document.extraction_status === "partial" ? "partial recovery" : document.fields.every((field) => field.confidence === "high") ? "high confidence" : "review evidence"}</span></span></summary>
       <article class="document-card">
-        <div class="document-card-heading"><div><h4>${escapeHtml(document.document_id)}</h4><p class="field-meta">${escapeHtml(document.extraction_engine ? `Parsed by ${document.extraction_engine.replaceAll("_", " ")}` : "Organizer evidence fixture")}</p></div><a class="evidence-link" href="${escapeHtml(servedPath(document.preview_url))}" target="_blank" rel="noreferrer">Open original synthetic PDF</a></div>
+        <div class="document-card-heading"><div><h4>${escapeHtml(document.document_id)}</h4><p class="field-meta">${escapeHtml(extractionEngineLabel(document))}</p></div><a class="evidence-link" href="${escapeHtml(servedPath(document.preview_url))}" target="_blank" rel="noreferrer">Open original synthetic PDF</a></div>
         <div class="document-review-workspace">
           <section class="document-confirmations" aria-label="Recovered fields">
             <h5>Confirm values</h5><p class="help-text">Edit a transcription if needed, then confirm the current inputs here.</p>
             ${document.contains_untrusted_content ? `<p class="untrusted">${escapeHtml(document.untrusted_content_handling)}</p>` : ""}
-            ${document.extraction_status === "abstained" ? `<p class="abstention"><strong>Extraction abstained:</strong> ${escapeHtml(document.abstention_reason)}</p>` : ""}
+            ${document.extraction_status !== "extracted" ? `<p class="abstention"><strong>${document.extraction_status === "partial" ? "Partial recovery:" : "Extraction abstained:"}</strong> ${escapeHtml(document.extraction_summary || document.abstention_reason)}</p>` : `<p class="help-text">${escapeHtml(document.extraction_summary || "")}</p>`}
             <table class="field-table"><colgroup><col><col class="source-evidence-column"></colgroup><thead><tr><th>Allowlisted field</th><th>Source evidence</th></tr></thead><tbody>${document.fields.map((field) => {
         const key = evidenceKey(document.document_id, field.field);
         const value = state.evidence[key] ?? field.value;
         const confirmation = state.confirmed ? "confirmed for this session" : state.evidence[key] === undefined ? "pending; renter confirmation required" : "corrected; renter confirmation required";
         const sourceDetails = field.page ? `p. ${field.page}<br>` : "No precise source box recovered<br>";
-          return `<tr id="evidence-row-${escapeHtml(key)}" class="${state.highlightedEvidenceKey === key ? "evidence-highlighted" : ""}"><td><label for="evidence-${escapeHtml(key)}"><strong>${escapeHtml(field.field.replaceAll("_", " "))}</strong></label><input id="evidence-${escapeHtml(key)}" data-evidence-document="${escapeHtml(document.document_id)}" data-evidence-field="${escapeHtml(field.field)}" value="${escapeHtml(value)}" aria-describedby="evidence-meta-${escapeHtml(key)}"><span id="evidence-meta-${escapeHtml(key)}" class="field-meta">${escapeHtml(field.purpose)} · ${escapeHtml(confirmation)}</span></td><td>${sourceDetails}${field.bbox ? `<button class="source-locate" type="button" data-highlight-document="${escapeHtml(document.document_id)}" data-highlight-field="${escapeHtml(field.field)}">Highlight</button><br>` : ""}<span class="status ${field.confidence === "high" ? "ready" : "pending"}">${escapeHtml(field.confidence)}</span></td></tr>`;
+          const ocrMetadata = field.extraction_method === "ocr" ? `OCR candidate · ${field.ocr_confidence}% OCR confidence · ` : "";
+          return `<tr id="evidence-row-${escapeHtml(key)}" class="${state.highlightedEvidenceKey === key ? "evidence-highlighted" : ""}"><td><label for="evidence-${escapeHtml(key)}"><strong>${escapeHtml(field.field.replaceAll("_", " "))}</strong>${field.extraction_method === "ocr" ? `<span class="ocr-candidate">OCR candidate</span>` : ""}</label><input id="evidence-${escapeHtml(key)}" data-evidence-document="${escapeHtml(document.document_id)}" data-evidence-field="${escapeHtml(field.field)}" value="${escapeHtml(value)}" aria-describedby="evidence-meta-${escapeHtml(key)}"><span id="evidence-meta-${escapeHtml(key)}" class="field-meta">${escapeHtml(ocrMetadata + field.purpose)} · ${escapeHtml(confirmation)}</span></td><td>${sourceDetails}${field.bbox ? `<button class="source-locate" type="button" data-highlight-document="${escapeHtml(document.document_id)}" data-highlight-field="${escapeHtml(field.field)}">Highlight</button><br>` : ""}<span class="status ${field.confidence === "high" ? "ready" : "pending"}">${escapeHtml(field.confidence)}</span></td></tr>`;
             }).join("")}</tbody></table><div class="form-actions document-confirm-action" data-document-confirmation="${escapeHtml(document.document_id)}" ${state.changedDocumentIds.has(document.document_id) ? "" : "hidden"}><button class="primary-button" type="button" data-confirm-document="${escapeHtml(document.document_id)}">Confirm changes</button><span class="field-meta">Confirms all current profile and evidence inputs.</span></div>
           </section>
           <aside class="document-source-preview" aria-label="Rendered source PDF">
@@ -270,7 +280,7 @@ function renderExtractionBenchmark() {
   const documents = benchmark.documents;
   const profileRecovery = hasUnrecoveredProfileEvidence() ? `<li><span class="status needs-review">Review needed</span><strong>Renter profile</strong> — One or more material profile fields were not recovered from readable local evidence, so confirmation remains held.</li>` : `<li><span class="status ready">Recovered</span><strong>Renter profile</strong> — Every material profile field has a readable local evidence candidate.</li>`;
   const sourceRecovery = state.sources.length ? `<ul class="source-recovery">${profileRecovery}${state.sources.map((source) => `<li><span class="status ${source.evidence_state === "recovered" ? "ready" : "needs-review"}">${source.evidence_state === "recovered" ? "Recovered" : "Review needed"}</span><strong>${escapeHtml(source.label)}</strong> — ${escapeHtml(source.evidence_detail)}</li>`).join("")}</ul>` : "";
-  $("#extraction-benchmark-content").innerHTML = `<div class="benchmark-metrics"><p><strong>${fields.exact_matches}/${fields.extracted}</strong><span>exact fields when the PDF has readable text</span></p><p><strong>${documents.abstained_raster_only}</strong><span>raster-only fixtures abstained instead of guessed</span></p><p><strong>${benchmark.confidence.high_field_exact_match_percent}%</strong><span>fixture exact match for high-evidence fields</span></p></div><p class="help-text">${escapeHtml(benchmark.scope)} ${escapeHtml(benchmark.abstention_policy)}</p>${sourceRecovery}`;
+  $("#extraction-benchmark-content").innerHTML = `<div class="benchmark-metrics"><p><strong>${fields.exact_matches}/${fields.extracted}</strong><span>exact allowlisted fixture fields</span></p><p><strong>${benchmark.confidence.ocr_candidate_fields}</strong><span>strict local OCR candidates (${benchmark.confidence.ocr_candidate_exact_match_percent}% fixture exactness)</span></p><p><strong>${documents.abstained}</strong><span>fixtures abstained rather than guessed</span></p></div><p class="help-text">${escapeHtml(benchmark.scope)} Native text and local OCR results are reported separately: ${documents.native_text} native-text documents and ${documents.ocr_attempted} local-OCR attempts. ${escapeHtml(benchmark.abstention_policy)}</p>${sourceRecovery}`;
 }
 
 function fieldValueFromEvidence(documentId, field) {

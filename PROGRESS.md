@@ -18,7 +18,7 @@
 - [x] Browser-smoke-tested consent, fixture loading, correction invalidation/recalculation, safety refusal, and session deletion.
 - [x] Added editable correction controls for every displayed allowlisted field; relevant date and income corrections update downstream readiness and math after reconfirmation.
 - [x] Added regression coverage for all supplied Q&A gold answers/citations and the required submission contract.
-- [x] Replaced filename-only fixture selection with local selectable-text extraction for exact supplied synthetic PDF bytes; added source-box maps, explicit raster abstention, an extraction fixture benchmark, and a material-input recovery gate.
+- [x] Replaced filename-only fixture selection with local selectable-text extraction for exact supplied synthetic PDF bytes; added source-box maps, strict local Tesseract fallback for textless pages, explicit abstention for unavailable/unqualified OCR, an extraction fixture benchmark split by method, and a material-input recovery gate.
 - [x] Verified the renter-initiated packet-export action, packet preview, action-log entry, and "not sent" completion announcement.
 
 ## Completion Audit

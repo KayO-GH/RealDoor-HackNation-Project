@@ -1,15 +1,19 @@
 import base64
 import json
+import subprocess
 import threading
 import unittest
 from http import HTTPStatus
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from unittest.mock import patch
 
 from api.index import app as vercel_app
 from app import AppHandler
+from realdoor.extraction import LocalPdfEvidenceExtractor
 from realdoor.service import ALLOWLISTED_FIELDS, RealDoorService
 
 
@@ -50,7 +54,7 @@ class RealDoorServiceTests(unittest.TestCase):
                     self.assertTrue(0 <= y1 < y2 <= 792)
                     self.assertIn(field["confidence"], {"high", "medium"})
 
-    def test_local_pdf_extraction_benchmarks_source_boxes_and_abstention(self):
+    def test_local_pdf_extraction_benchmarks_native_and_ocr_source_boxes(self):
         evidence = self.service.local_evidence_payload("HH-001")
         by_document = {document["document_id"]: document for document in evidence["documents"]}
         native_pay_stub = by_document["HH-001-D03"]
@@ -63,13 +67,48 @@ class RealDoorServiceTests(unittest.TestCase):
         self.assertTrue(all(field["confidence"] == "high" and field["bbox"] for field in native_pay_stub["fields"]))
         self.assertTrue(all(field["document_id"] == native_pay_stub["document_id"] for field in native_pay_stub["fields"]))
         raster_pay_stub = by_document["HH-001-D02"]
-        self.assertEqual(raster_pay_stub["extraction_status"], "abstained")
-        self.assertFalse(raster_pay_stub["fields"])
-        self.assertTrue(all(not document["fields"] for document in evidence["documents"] if document["extraction_status"] == "abstained"))
+        self.assertEqual(raster_pay_stub["extraction_engine"], "local_tesseract_ocr_v1")
+        self.assertEqual(raster_pay_stub["extraction_status"], "extracted")
+        self.assertEqual({field["field"] for field in raster_pay_stub["fields"]}, {
+            "person_name", "pay_date", "pay_period_start", "pay_period_end", "pay_frequency",
+            "regular_hours", "hourly_rate", "gross_pay", "net_pay",
+        })
+        self.assertEqual({field["field"]: field["value"] for field in raster_pay_stub["fields"]}, {
+            "person_name": "Mara North", "pay_date": "2026-06-27", "pay_period_start": "2026-06-10",
+            "pay_period_end": "2026-06-23", "pay_frequency": "biweekly", "regular_hours": 76,
+            "hourly_rate": 28.5, "gross_pay": 2166.0, "net_pay": 1689.48,
+        })
+        self.assertTrue(all(
+            field["extraction_method"] == "ocr"
+            and field["confidence"] == "medium"
+            and field["ocr_confidence"] >= 90
+            and field["bbox"]
+            for field in raster_pay_stub["fields"]
+        ))
         benchmark = evidence["benchmark"]
-        self.assertEqual(benchmark["allowlisted_fields"]["exact_matches"], 104)
-        self.assertEqual(benchmark["allowlisted_fields"]["extracted"], 104)
-        self.assertEqual(benchmark["documents"]["abstained_raster_only"], 8)
+        self.assertEqual(benchmark["allowlisted_fields"]["exact_matches"], 156)
+        self.assertEqual(benchmark["allowlisted_fields"]["extracted"], 156)
+        self.assertEqual(benchmark["documents"]["ocr_attempted"], 8)
+        self.assertEqual(benchmark["documents"]["abstained"], 0)
+        self.assertEqual(benchmark["confidence"]["ocr_candidate_fields"], 52)
+
+    def test_local_ocr_covers_rasterized_application_and_employment_documents(self):
+        application = next(document for document in self.service.local_evidence_payload("HH-002")["documents"] if document["document_id"] == "HH-002-D01")
+        employment = next(document for document in self.service.local_evidence_payload("HH-002")["documents"] if document["document_id"] == "HH-002-D04")
+        for document in (application, employment):
+            with self.subTest(document=document["document_id"]):
+                self.assertEqual(document["extraction_engine"], "local_tesseract_ocr_v1")
+                self.assertEqual(document["extraction_status"], "extracted")
+                self.assertTrue(all(field["extraction_method"] == "ocr" for field in document["fields"]))
+
+    def test_unavailable_local_ocr_abstains_without_fabricating_fields(self):
+        document = next(item for item in self.service._documents if item["document_id"] == "HH-001-D02")
+        with patch("realdoor.extraction.shutil.which", return_value=None):
+            parsed = self.service._local_document(document)
+        self.assertEqual(parsed["extraction_engine"], "local_tesseract_ocr_v1")
+        self.assertEqual(parsed["extraction_status"], "abstained")
+        self.assertFalse(parsed["fields"])
+        self.assertIn("unavailable", parsed["abstention_reason"].lower())
 
     def test_local_source_boxes_overlap_the_labeled_fixture_values(self):
         expected_documents = {
@@ -112,6 +151,14 @@ class RealDoorServiceTests(unittest.TestCase):
         self.assertTrue({"person_name", "household_size", "address", "application_date"}.issubset(fields_by_document["HH-003-D01"]))
         self.assertTrue({"regular_hours", "hourly_rate", "pay_frequency"}.issubset(fields_by_document["HH-003-D02"]))
         self.assertTrue({"monthly_benefit", "benefit_frequency"}.issubset(fields_by_document["HH-003-D04"]))
+
+    def test_hh003_ocr_pay_stub_does_not_replace_newer_native_wage_source(self):
+        payload = self.service.household_payload("HH-003")
+        current_wage = next(source for source in payload["calculation"]["sources"] if source["field"] == "gross_pay")
+        evidence = {document["document_id"]: document for document in self.service.local_evidence_payload("HH-003")["documents"]}
+        self.assertEqual(current_wage["document_id"], "HH-003-D02")
+        self.assertEqual(evidence["HH-003-D02"]["extraction_engine"], "local_pdf_text_v1")
+        self.assertEqual(evidence["HH-003-D03"]["extraction_engine"], "local_tesseract_ocr_v1")
 
     def test_material_calculation_values_have_citations(self):
         payload = self.service.household_payload("HH-001")
@@ -202,6 +249,51 @@ class RealDoorServiceTests(unittest.TestCase):
                 self.assertIn(submission["readiness_status"], allowed_readiness)
                 self.assertTrue(submission["citations"])
 
+
+class LocalOcrFallbackTests(unittest.TestCase):
+    metadata = {
+        "document_id": "HH-001-D02",
+        "household_id": "HH-001",
+        "document_type": "pay_stub",
+        "file_name": "hh-001_d02_pay_stub.pdf",
+    }
+    path = ROOT / "synthetic_documents/documents/hh-001_d02_pay_stub.pdf"
+
+    @staticmethod
+    def _tsv(words):
+        rows = ["level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext"]
+        rows.extend(
+            f"5\t1\t1\t1\t{index}\t1\t40\t{index * 20}\t40\t12\t{confidence}\t{text}"
+            for index, (text, confidence) in enumerate(words, start=1)
+        )
+        return "\n".join(rows).encode()
+
+    def _extract_with_ocr_output(self, stdout):
+        result = SimpleNamespace(returncode=0, stdout=stdout, stderr=b"")
+        with patch("realdoor.extraction.shutil.which", return_value="tesseract"), patch("realdoor.extraction.subprocess.run", return_value=result):
+            return LocalPdfEvidenceExtractor().extract_path(self.path, self.metadata)
+
+    def test_low_confidence_malformed_and_missing_label_ocr_abstain(self):
+        cases = {
+            "low confidence": self._tsv([("EMPLOYEE", 89), ("Mara", 96)]),
+            "missing label": self._tsv([("UNRELATED", 96), ("Mara", 96)]),
+            "malformed": b"not a TSV response",
+        }
+        for name, stdout in cases.items():
+            with self.subTest(name=name):
+                parsed = self._extract_with_ocr_output(stdout)
+                self.assertEqual(parsed["extraction_status"], "abstained")
+                self.assertFalse(parsed["fields"])
+
+    def test_ocr_timeout_abstains(self):
+        with patch("realdoor.extraction.shutil.which", return_value="tesseract"), patch(
+            "realdoor.extraction.subprocess.run",
+            side_effect=subprocess.TimeoutExpired("tesseract", 15),
+        ):
+            parsed = LocalPdfEvidenceExtractor().extract_path(self.path, self.metadata)
+        self.assertEqual(parsed["extraction_status"], "abstained")
+        self.assertIn("timed out", parsed["abstention_reason"].lower())
+
 class AppHandlerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -272,11 +364,12 @@ class AppHandlerTests(unittest.TestCase):
         self.assertEqual(status, HTTPStatus.BAD_REQUEST)
         self.assertIn("error", body)
 
-    def test_local_evidence_get_endpoint_exposes_abstention_and_fixture_scope(self):
+    def test_local_evidence_get_endpoint_exposes_ocr_and_fixture_scope(self):
         with urlopen(f"{self.base_url}/api/households/HH-003/local-evidence") as response:
             body = json.load(response)
         self.assertIn("Organizer-provided synthetic PDFs only", body["benchmark"]["scope"])
-        self.assertTrue(any(document["extraction_status"] == "abstained" for document in body["documents"]))
+        self.assertTrue(any(document["extraction_engine"] == "local_tesseract_ocr_v1" for document in body["documents"]))
+        self.assertIn("90%", body["benchmark"]["abstention_policy"])
         self.assertIn("candidate evidence", body["boundary"])
 
 
