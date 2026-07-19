@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -29,6 +29,11 @@ app = FastAPI(
 class DemoQuestion(BaseModel):
     question: str = Field(max_length=4096)
     household: str | None = None
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    return RedirectResponse(url="/index.html", status_code=307)
 
 
 @app.get("/health")

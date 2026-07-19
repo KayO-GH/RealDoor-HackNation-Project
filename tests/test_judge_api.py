@@ -8,7 +8,7 @@ from realdoor import judge_api
 class JudgeApiTests(unittest.TestCase):
     def test_judge_routes_are_limited_to_synthetic_demo(self):
         paths = {route.path for route in judge_api.app.routes}
-        self.assertEqual(paths, {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc", "/health", "/api/households", "/api/households/{household_id}", "/api/consent", "/api/ask", ""})
+        self.assertEqual(paths, {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc", "/", "/health", "/api/households", "/api/households/{household_id}", "/api/consent", "/api/ask", ""})
         self.assertFalse(any(path.startswith("/v1") for path in paths))
 
     def test_household_and_safety_endpoints_use_synthetic_data(self):
