@@ -11,6 +11,8 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from unittest.mock import patch
 
+import fitz
+
 from api.index import app as vercel_app
 from app import AppHandler
 from realdoor.extraction import LocalPdfEvidenceExtractor
@@ -91,6 +93,8 @@ class RealDoorServiceTests(unittest.TestCase):
         self.assertEqual(benchmark["documents"]["ocr_attempted"], 8)
         self.assertEqual(benchmark["documents"]["abstained"], 0)
         self.assertEqual(benchmark["confidence"]["ocr_candidate_fields"], 52)
+        self.assertEqual(benchmark["native_text"]["exact_matches"], 104)
+        self.assertEqual(benchmark["ocr"]["exact_matches"], 52)
 
     def test_local_ocr_covers_rasterized_application_and_employment_documents(self):
         application = next(document for document in self.service.local_evidence_payload("HH-002")["documents"] if document["document_id"] == "HH-002-D01")
@@ -273,6 +277,22 @@ class LocalOcrFallbackTests(unittest.TestCase):
         with patch("realdoor.extraction.shutil.which", return_value="tesseract"), patch("realdoor.extraction.subprocess.run", return_value=result):
             return LocalPdfEvidenceExtractor().extract_path(self.path, self.metadata)
 
+    @staticmethod
+    def _rasterized_bytes(file_name):
+        source = fitz.open(ROOT / "synthetic_documents/documents" / file_name)
+        try:
+            page = source[0]
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(300 / 72, 300 / 72), colorspace=fitz.csGRAY, alpha=False)
+            raster = fitz.open()
+            try:
+                output = raster.new_page(width=page.rect.width, height=page.rect.height)
+                output.insert_image(output.rect, stream=pixmap.tobytes("png"))
+                return raster.tobytes()
+            finally:
+                raster.close()
+        finally:
+            source.close()
+
     def test_low_confidence_malformed_and_missing_label_ocr_abstain(self):
         cases = {
             "low confidence": self._tsv([("EMPLOYEE", 89), ("Mara", 96)]),
@@ -293,6 +313,22 @@ class LocalOcrFallbackTests(unittest.TestCase):
             parsed = LocalPdfEvidenceExtractor().extract_path(self.path, self.metadata)
         self.assertEqual(parsed["extraction_status"], "abstained")
         self.assertIn("timed out", parsed["abstention_reason"].lower())
+
+    def test_ocr_covers_in_memory_rasterized_benefit_and_gig_documents(self):
+        cases = (
+            ("HH-003-D04", "HH-003", "benefit_letter", "hh-003_d04_benefit_letter.pdf", {"person_name", "document_date", "monthly_benefit", "benefit_frequency"}, False),
+            ("HH-004-D04", "HH-004", "gig_statement", "hh-004_d04_gig_statement.pdf", {"person_name", "statement_month", "gross_receipts", "platform_fees"}, True),
+        )
+        for document_id, household_id, document_type, file_name, expected_fields, has_untrusted_text in cases:
+            with self.subTest(document=document_id):
+                parsed = LocalPdfEvidenceExtractor().extract_bytes(
+                    self._rasterized_bytes(file_name),
+                    {"document_id": document_id, "household_id": household_id, "document_type": document_type, "file_name": file_name},
+                )
+                self.assertEqual(parsed["extraction_status"], "extracted")
+                self.assertEqual({field["field"] for field in parsed["fields"]}, expected_fields)
+                self.assertTrue(all(field["extraction_method"] == "ocr" and field["ocr_confidence"] >= 90 for field in parsed["fields"]))
+                self.assertEqual(parsed["contains_untrusted_content"], has_untrusted_text)
 
 class AppHandlerTests(unittest.TestCase):
     @classmethod

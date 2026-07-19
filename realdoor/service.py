@@ -251,7 +251,7 @@ class RealDoorService:
         not a production accuracy claim or an applicant score.
         """
         expected = extracted = matches = native_documents = ocr_documents = partial_documents = abstained_documents = 0
-        high_total = high_matches = ocr_total = ocr_matches = 0
+        high_total = high_matches = ocr_total = ocr_matches = native_total = native_matches = 0
         for document in self._documents:
             parsed = self._local_document(document)
             if parsed["extraction_status"] == "abstained":
@@ -277,6 +277,9 @@ class RealDoorService:
                 if observed_field.get("extraction_method") == "ocr":
                     ocr_total += 1
                     ocr_matches += int(correct)
+                else:
+                    native_total += 1
+                    native_matches += int(correct)
         parsed_accuracy = round((matches / extracted) * 100, 1) if extracted else 0.0
         coverage = round((extracted / expected) * 100, 1) if expected else 0.0
         return {
@@ -291,6 +294,18 @@ class RealDoorService:
                 "abstained": abstained_documents,
             },
             "allowlisted_fields": {"expected": expected, "extracted": extracted, "exact_matches": matches, "coverage_percent": coverage, "exact_match_percent_when_extracted": parsed_accuracy},
+            "native_text": {
+                "documents": native_documents,
+                "extracted": native_total,
+                "exact_matches": native_matches,
+                "exact_match_percent_when_extracted": round((native_matches / native_total) * 100, 1) if native_total else 0.0,
+            },
+            "ocr": {
+                "documents": ocr_documents,
+                "extracted": ocr_total,
+                "exact_matches": ocr_matches,
+                "exact_match_percent_when_extracted": round((ocr_matches / ocr_total) * 100, 1) if ocr_total else 0.0,
+            },
             "confidence": {
                 "high_fields": high_total,
                 "high_field_exact_match_percent": round((high_matches / high_total) * 100, 1) if high_total else 0.0,
