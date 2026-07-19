@@ -66,6 +66,8 @@ def ask(body: DemoQuestion) -> JSONResponse:
     return JSONResponse(SERVICE.safety_answer(body.question, household_id), headers={"Cache-Control": "no-store"})
 
 
-# Vercel serves public/ from its CDN. Mounting it here keeps the judge entrypoint
-# runnable locally and provides a safe fallback if static routing changes.
-app.mount("/", StaticFiles(directory=ROOT / "public", html=True), name="judge-client")
+# Vercel emits public/ as static output rather than placing it in /var/task.
+# Mount it only for local runs, where the directory is available beside the app.
+PUBLIC_ROOT = ROOT / "public"
+if PUBLIC_ROOT.is_dir() and not os.environ.get("VERCEL"):
+    app.mount("/", StaticFiles(directory=PUBLIC_ROOT, html=True), name="judge-client")

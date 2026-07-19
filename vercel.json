@@ -3,7 +3,6 @@
   "functions": {
     "realdoor/judge_api.py": {
       "maxDuration": 30,
-      "includeFiles": "public/**",
       "excludeFiles": "{tests/**,web/**,starter/**,participant-guide/**,synthetic_documents/documents/**,data/realdoor_data_pack.xlsx}"
     }
   },
