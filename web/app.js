@@ -180,8 +180,9 @@ function renderDocuments() {
       <summary><span class="document-summary-title"><span class="eyebrow">${escapeHtml(document.document_type.replaceAll("_", " "))}</span><strong>${escapeHtml(document.file_name)}</strong></span><span class="document-summary-metrics"><span>${document.fields.length} recovered fields</span><span>${document.page_count} page${document.page_count === 1 ? "" : "s"}</span><span class="status ${document.extraction_status === "abstained" ? "needs-review" : document.fields.every((field) => field.confidence === "high") ? "ready" : "pending"}">${document.extraction_status === "abstained" ? "abstained" : document.fields.every((field) => field.confidence === "high") ? "high confidence" : "review evidence"}</span></span></summary>
       <article class="document-card">
         <div class="document-card-heading"><div><h4>${escapeHtml(document.document_id)}</h4><p class="field-meta">${escapeHtml(document.extraction_engine ? `Parsed by ${document.extraction_engine.replaceAll("_", " ")}` : "Organizer evidence fixture")}</p></div><a class="evidence-link" href="${escapeHtml(servedPath(document.preview_url))}" target="_blank" rel="noreferrer">Open original synthetic PDF</a></div>
-        <div class="document-evidence-split">
-          <section class="document-fields" aria-label="Recovered fields">
+        <div class="document-review-workspace">
+          <section class="document-confirmations" aria-label="Recovered fields">
+            <h5>Confirm values</h5><p class="help-text">Edit a transcription if needed, then confirm the current inputs here.</p>
             ${document.contains_untrusted_content ? `<p class="untrusted">${escapeHtml(document.untrusted_content_handling)}</p>` : ""}
             ${document.extraction_status === "abstained" ? `<p class="abstention"><strong>Extraction abstained:</strong> ${escapeHtml(document.abstention_reason)}</p>` : ""}
             <table class="field-table"><thead><tr><th>Allowlisted field</th><th>Source evidence</th></tr></thead><tbody>${document.fields.map((field) => {
@@ -193,6 +194,7 @@ function renderDocuments() {
             }).join("")}</tbody></table>${state.changedDocumentIds.has(document.document_id) ? `<div class="form-actions document-confirm-action"><button class="primary-button" type="button" data-confirm-document="${escapeHtml(document.document_id)}">Confirm changes</button><span class="field-meta">Confirms all current profile and evidence inputs.</span></div>` : ""}
           </section>
           <aside class="document-source-preview" aria-label="Rendered source PDF">
+            <div class="source-preview-heading"><div><h5>Source page</h5><p class="help-text">Purple markers show recovered allowlisted source boxes. Select one to highlight its confirmation field.</p></div><button class="text-button" type="button" data-open-document-source="${escapeHtml(document.document_id)}">Open larger view</button></div>
             ${documentSourcePreviewMarkup(document)}
           </aside>
         </div>
@@ -227,7 +229,7 @@ function documentSourcePreviewMarkup(document) {
     const height = Math.max(((y2 - y1) / 792) * 100, 1.2);
     const key = evidenceKey(document.document_id, field.field);
     return `<button class="inline-source-marker ${state.highlightedEvidenceKey === key ? "inline-source-marker-active" : ""}" type="button" data-source-marker data-source-document="${escapeHtml(document.document_id)}" data-source-field="${escapeHtml(field.field)}" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;" aria-label="Highlight ${escapeHtml(field.field.replaceAll("_", " "))} source"></button>`;
-  }).join("")}</div><figcaption>Purple markers identify recovered allowlisted values; they do not indicate a decision or recommendation.</figcaption><button class="text-button" type="button" data-open-document-source="${escapeHtml(document.document_id)}">Open larger source view</button></figure>`;
+  }).join("")}</div><figcaption>Purple markers identify recovered allowlisted values; they do not indicate a decision or recommendation.</figcaption></figure>`;
 }
 
 function highlightEvidence(documentId, fieldName) {
