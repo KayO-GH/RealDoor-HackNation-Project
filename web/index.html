@@ -40,7 +40,7 @@
         <div>
           <p class="eyebrow">Synthetic fixtures only</p>
           <h2 id="start-title">Start a local session</h2>
-          <p>Choose a supplied household for the demo, or select its local PDFs. File contents are never uploaded; only known supplied fixture filenames are matched in this browser.</p>
+          <p>Choose a supplied household for the demo, or select its local PDFs. Exact supplied synthetic PDFs are parsed only in local memory for allowlisted evidence and source boxes; they are never stored or sent to a provider.</p>
         </div>
         <div class="controls">
           <label class="consent-check" for="consent-check"><input id="consent-check" type="checkbox"> I understand the synthetic-data use and session-deletion controls.</label>
@@ -78,12 +78,24 @@
               </ul>
             </aside>
           </div>
+          <section class="extraction-benchmark" aria-labelledby="benchmark-title">
+            <div><p class="eyebrow">Evidence engine</p><h3 id="benchmark-title">Extraction proof, not a black box</h3></div>
+            <div id="extraction-benchmark-content" aria-live="polite"></div>
+          </section>
           <div class="documents-heading"><h3>Document evidence</h3><p id="untrusted-summary" class="help-text"></p></div>
           <div id="document-list" class="document-list"></div>
         </section>
 
         <section id="understand" class="stage muted-stage" aria-labelledby="understand-title">
-          <div class="stage-heading"><p class="eyebrow">02 · Understand</p><h2 id="understand-title">Use one frozen rule set and deterministic math</h2></div>
+          <div class="stage-heading"><p class="eyebrow">02 · Understand</p><h2 id="understand-title">Trace every result through one frozen rule set</h2></div>
+          <section class="proof-chain panel" aria-labelledby="proof-chain-title">
+            <div class="proof-chain-heading"><div><p class="eyebrow">Evidence traceability</p><h3 id="proof-chain-title">ProofChain</h3></div><span id="proof-chain-state" class="status pending" role="status">Confirmation required</span></div>
+            <p id="proof-chain-summary" class="help-text"></p>
+            <div id="proof-flow" class="proof-flow" aria-label="Evidence path to the renter-controlled packet"></div>
+            <div id="proof-impact" class="proof-impact" aria-live="polite"></div>
+            <div class="proof-chain-grid"><section aria-labelledby="proof-checks-title"><h4 id="proof-checks-title">Live proof checks</h4><div id="proof-checks" class="proof-checks"></div></section><section aria-labelledby="proof-actions-title"><h4 id="proof-actions-title">Next evidence actions</h4><div id="proof-actions" class="proof-actions"></div></section></div>
+            <p id="proof-chain-boundary" class="boundary-inline"></p>
+          </section>
           <div id="calculation-gate" class="notice warning" role="status">Confirm the profile to calculate from it.</div>
           <div id="calculation-content" class="stage-layout" hidden>
             <div class="panel">
@@ -98,13 +110,17 @@
             </aside>
           </div>
           <div class="panel question-panel">
-            <h3>Ask about the local rules</h3>
+            <h3>Cited frozen-rule lookup</h3>
             <form id="question-form">
-              <label for="question">Question</label>
+              <label for="question">Ask a rule or safety question</label>
               <div class="question-row"><input id="question" name="question" placeholder="What is the frozen 60% threshold?" autocomplete="off"><button class="secondary-button" type="submit">Ask</button></div>
             </form>
             <div id="answer" class="answer" aria-live="polite">Answers will include source citations or a safety boundary.</div>
           </div>
+          <section class="safety-proof" aria-labelledby="safety-proof-title">
+            <div><p class="eyebrow">Live controls</p><h3 id="safety-proof-title">Run the safety proof</h3><p class="help-text">Test refusal of a decision request, prompt injection, and cross-household disclosure against the active local session.</p></div>
+            <div><button class="secondary-button" id="run-safety-proof" type="button">Run three live checks</button><div id="safety-proof-results" aria-live="polite"></div></div>
+          </section>
         </section>
 
         <section id="prepare" class="stage" aria-labelledby="prepare-title">
@@ -120,10 +136,22 @@
               <label for="packet-note">Renter note (optional)</label>
               <textarea id="packet-note" rows="5" placeholder="Add a note for a qualified human reviewer."></textarea>
               <div id="packet-preview" class="packet-preview" aria-live="polite"></div>
-              <div class="form-actions"><button class="primary-button" id="download-packet" type="button" disabled>Download readiness packet</button><span class="status neutral">Never auto-sent</span></div>
-              <p class="help-text">The packet is downloaded only when you choose. RealDoor does not send it to a property or provider.</p>
+              <div class="form-actions"><button class="primary-button" id="download-packet" type="button" disabled>Download print-ready packet</button><span class="status neutral">Never auto-sent</span></div>
+              <p class="help-text">The packet is a readable HTML case file that can be printed to PDF. It is downloaded only when you choose and is never sent to a property or provider.</p>
             </div>
           </div>
+        </section>
+
+        <section id="discover" class="stage muted-stage" aria-labelledby="discover-title">
+          <div class="stage-heading"><p class="eyebrow">Optional public context</p><h2 id="discover-title">Discover public LIHTC project context without gatekeeping</h2></div>
+          <section class="discover panel" aria-labelledby="discover-panel-title">
+            <div class="discover-heading"><div><h3 id="discover-panel-title">Boston-Cambridge-Quincy project subset</h3><p id="discover-boundary" class="boundary-inline"></p></div><span class="status neutral">Availability unknown</span></div>
+            <div class="discover-controls" aria-label="Renter-selected public-data filters"><label for="discover-city">City<select id="discover-city"><option value="">All cities</option></select></label><label for="discover-bedroom">Reported bedroom type<select id="discover-bedroom"><option value="">All reported projects</option><option value="studio_units">Studios reported</option><option value="one_bedroom_units">One-bedroom units reported</option><option value="two_bedroom_units">Two-bedroom units reported</option><option value="three_bedroom_units">Three-bedroom units reported</option><option value="four_bedroom_units">Four-bedroom units reported</option></select></label><button id="clear-discover-filters" class="secondary-button" type="button">Show all projects</button></div>
+            <p id="discover-status" class="help-text" aria-live="polite"></p>
+            <div id="discover-map" class="discover-map" role="img" aria-label="Approximate project-location context. Use the table for the complete accessible project list."></div>
+            <div class="table-wrap"><table class="property-table"><caption class="sr-only">Public LIHTC project context. This is not a vacancy, rent, waitlist, or application-status list.</caption><thead><tr><th>Public project</th><th>Location</th><th>Reported units</th><th>Data note</th></tr></thead><tbody id="discover-results"></tbody></table></div>
+            <p id="discover-source" class="help-text"></p>
+          </section>
         </section>
 
         <section class="audit panel" aria-labelledby="audit-title">
