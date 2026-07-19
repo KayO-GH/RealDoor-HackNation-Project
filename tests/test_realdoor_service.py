@@ -1,7 +1,13 @@
 import json
+import threading
 import unittest
+from http import HTTPStatus
+from http.server import ThreadingHTTPServer
 from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
+from app import AppHandler
 from realdoor.service import ALLOWLISTED_FIELDS, RealDoorService
 
 
@@ -89,6 +95,41 @@ class RealDoorServiceTests(unittest.TestCase):
                 self.assertIn(submission["comparison"], allowed_comparisons)
                 self.assertIn(submission["readiness_status"], allowed_readiness)
                 self.assertTrue(submission["citations"])
+
+class AppHandlerTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), AppHandler)
+        cls.thread = threading.Thread(target=cls.server.serve_forever)
+        cls.thread.start()
+        cls.url = f"http://127.0.0.1:{cls.server.server_port}/api/ask"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.thread.join()
+        cls.server.server_close()
+
+    def ask(self, payload):
+        request = Request(
+            self.url,
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urlopen(request) as response:
+                return response.status, json.load(response)
+        except HTTPError as error:
+            with error:
+                return error.code, json.load(error)
+
+    def test_ask_rejects_invalid_household_values(self):
+        for household, expected_status in ((["HH-001"], HTTPStatus.BAD_REQUEST), ("HH-999", HTTPStatus.NOT_FOUND)):
+            with self.subTest(household=household):
+                status, body = self.ask({"question": "What is the annualized income?", "household": household})
+                self.assertEqual(status, expected_status)
+                self.assertIn("error", body)
 
 
 if __name__ == "__main__":

@@ -53,10 +53,21 @@ class AppHandler(BaseHTTPRequestHandler):
             if length < 1 or length > 4096:
                 raise ValueError
             payload = json.loads(self.rfile.read(length))
+            if not isinstance(payload, dict):
+                raise ValueError
             question = str(payload.get("question", ""))
             household = payload.get("household")
         except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
             return self._json({"error": "Send a short local question."}, HTTPStatus.BAD_REQUEST)
+        if household is not None:
+            if not isinstance(household, str):
+                return self._json({"error": "Household must be a synthetic household ID."}, HTTPStatus.BAD_REQUEST)
+            household = household.strip().upper() or None
+        if household:
+            try:
+                SERVICE.household_payload(household)
+            except KeyError:
+                return self._json({"error": "Unknown synthetic household."}, HTTPStatus.NOT_FOUND)
         return self._json(SERVICE.safety_answer(question, household))
 
     def _json(self, payload, status=HTTPStatus.OK):

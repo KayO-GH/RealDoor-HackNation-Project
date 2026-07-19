@@ -10,7 +10,7 @@ const state = {
 };
 
 const $ = (selector) => document.querySelector(selector);
-const formatMoney = (value) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(Number(value || 0));
+const formatMoney = (value) => Number.isFinite(Number(value)) ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(Number(value)) : "Needs review";
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#039;", '"': "&quot;" })[character]);
 const multiplier = { weekly: 52, biweekly: 26, semimonthly: 24, monthly: 12, annual: 1 };
 const thresholdTable = { 1: 72000, 2: 82320, 3: 92580, 4: 102840, 5: 111120, 6: 119340, 7: 127560, 8: 135780 };
@@ -247,6 +247,14 @@ function confirmProfile() {
     announce("Enter a valid household size before confirming.");
     return;
   }
+  const calculation = currentCalculation();
+  const hasInvalidCalculationInput = calculation.sources.some((source) => String(source.amount).trim() === "" || !Number.isFinite(Number(source.amount)) || Number(source.amount) < 0 || !Object.hasOwn(multiplier, source.frequency)) || !Number.isFinite(calculation.annualizedIncome);
+  if (hasInvalidCalculationInput) {
+    $("#profile-state").className = "status needs-review";
+    $("#profile-state").textContent = "Enter valid income amounts and frequencies";
+    announce("Enter valid income amounts and frequencies before confirming.");
+    return;
+  }
   state.confirmed = true;
   $("#profile-state").className = "status ready";
   $("#profile-state").textContent = "Confirmed for this session";
@@ -339,12 +347,18 @@ async function askQuestion(event) {
   const question = $("#question").value.trim();
   if (!question) return;
   const household = state.payload?.household_id || "";
-  const response = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, household }), cache: "no-store" });
-  if (!response.ok) throw new Error("Unable to answer the local question.");
-  const answer = await response.json();
-  $("#answer").innerHTML = `<strong>${escapeHtml(answer.answer)}</strong>${answer.citations.map((citation) => `<div class="citation">${citationMarkup(citation)}</div>`).join("")}`;
-  addAudit("Asked a local rules or safety question");
-  announce("Local rules answer updated with citations.");
+  try {
+    const response = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, household }), cache: "no-store" });
+    const answer = await response.json();
+    if (!response.ok) throw new Error(answer.error || "Unable to answer the local question.");
+    $("#answer").innerHTML = `<strong>${escapeHtml(answer.answer)}</strong>${(answer.citations || []).map((citation) => `<div class="citation">${citationMarkup(citation)}</div>`).join("")}`;
+    addAudit("Asked a local rules or safety question");
+    announce("Local rules answer updated with citations.");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to answer the local question.";
+    $("#answer").innerHTML = `<p class="untrusted">${escapeHtml(message)}</p>`;
+    announce(message);
+  }
 }
 
 function showConsent() {
