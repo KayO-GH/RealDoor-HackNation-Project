@@ -163,7 +163,6 @@ function fieldValueFromEvidence(documentId, field) {
 }
 
 function applyEvidenceCorrection(documentId, field, value) {
-  const needsConfirmation = !state.changedDocumentIds.has(documentId);
   state.changedDocumentIds.add(documentId);
   state.evidence[evidenceKey(documentId, field)] = value;
   const profileField = state.payload.profile_fields.find((item) => item.document_id === documentId && item.field === field);
@@ -183,7 +182,6 @@ function applyEvidenceCorrection(documentId, field, value) {
   renderReadiness();
   renderPacketPreview();
   markUnconfirmed("An extracted value changed. Confirm it before reuse.");
-  if (needsConfirmation) requestAnimationFrame(() => [...document.querySelectorAll("[data-confirm-document]")].find((button) => button.dataset.confirmDocument === documentId)?.scrollIntoView({ behavior: "smooth", block: "center" }));
 }
 
 function renderCalculation() {
