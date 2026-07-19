@@ -190,8 +190,8 @@ function renderDocuments() {
         const value = state.evidence[key] ?? field.value;
         const confirmation = state.confirmed ? "confirmed for this session" : state.evidence[key] === undefined ? "pending; renter confirmation required" : "corrected; renter confirmation required";
         const sourceDetails = field.page ? `p. ${field.page}<br>` : "No precise source box recovered<br>";
-          return `<tr id="evidence-row-${escapeHtml(key)}" class="${state.highlightedEvidenceKey === key ? "evidence-highlighted" : ""}"><td><label for="evidence-${escapeHtml(key)}"><strong>${escapeHtml(field.field.replaceAll("_", " "))}</strong></label><input id="evidence-${escapeHtml(key)}" data-evidence-document="${escapeHtml(document.document_id)}" data-evidence-field="${escapeHtml(field.field)}" value="${escapeHtml(value)}" aria-describedby="evidence-meta-${escapeHtml(key)}"><span id="evidence-meta-${escapeHtml(key)}" class="field-meta">${escapeHtml(field.purpose)} · ${escapeHtml(confirmation)}</span></td><td>${sourceDetails}${field.bbox ? `<button class="source-locate" type="button" data-highlight-document="${escapeHtml(document.document_id)}" data-highlight-field="${escapeHtml(field.field)}">Highlight</button> <button class="source-locate" type="button" data-open-field-source="${escapeHtml(document.document_id)}" data-source-field="${escapeHtml(field.field)}">View</button><br>` : ""}<span class="status ${field.confidence === "high" ? "ready" : "pending"}">${escapeHtml(field.confidence)}</span></td></tr>`;
-            }).join("")}</tbody></table>${state.changedDocumentIds.has(document.document_id) ? `<div class="form-actions document-confirm-action"><button class="primary-button" type="button" data-confirm-document="${escapeHtml(document.document_id)}">Confirm changes</button><span class="field-meta">Confirms all current profile and evidence inputs.</span></div>` : ""}
+          return `<tr id="evidence-row-${escapeHtml(key)}" class="${state.highlightedEvidenceKey === key ? "evidence-highlighted" : ""}"><td><label for="evidence-${escapeHtml(key)}"><strong>${escapeHtml(field.field.replaceAll("_", " "))}</strong></label><input id="evidence-${escapeHtml(key)}" data-evidence-document="${escapeHtml(document.document_id)}" data-evidence-field="${escapeHtml(field.field)}" value="${escapeHtml(value)}" aria-describedby="evidence-meta-${escapeHtml(key)}"><span id="evidence-meta-${escapeHtml(key)}" class="field-meta">${escapeHtml(field.purpose)} · ${escapeHtml(confirmation)}</span></td><td>${sourceDetails}${field.bbox ? `<button class="source-locate" type="button" data-highlight-document="${escapeHtml(document.document_id)}" data-highlight-field="${escapeHtml(field.field)}">Highlight</button><br>` : ""}<span class="status ${field.confidence === "high" ? "ready" : "pending"}">${escapeHtml(field.confidence)}</span></td></tr>`;
+            }).join("")}</tbody></table><div class="form-actions document-confirm-action" data-document-confirmation="${escapeHtml(document.document_id)}" ${state.changedDocumentIds.has(document.document_id) ? "" : "hidden"}><button class="primary-button" type="button" data-confirm-document="${escapeHtml(document.document_id)}">Confirm changes</button><span class="field-meta">Confirms all current profile and evidence inputs.</span></div>
           </section>
           <aside class="document-source-preview" aria-label="Rendered source PDF">
             <div class="source-preview-heading"><div><h5>Source page</h5><p class="help-text">Purple markers show recovered allowlisted source boxes. Select one to highlight its confirmation field.</p></div><button class="text-button" type="button" data-open-document-source="${escapeHtml(document.document_id)}">Open larger view</button></div>
@@ -208,7 +208,6 @@ function renderDocuments() {
     else state.expandedDocuments.delete(details.dataset.documentId);
   }));
   $("#document-list").querySelectorAll("[data-highlight-document]").forEach((button) => button.addEventListener("click", () => highlightEvidence(button.dataset.highlightDocument, button.dataset.highlightField)));
-  $("#document-list").querySelectorAll("[data-open-field-source]").forEach((button) => button.addEventListener("click", () => openSourceDrawer(button.dataset.openFieldSource, button.dataset.sourceField, button)));
   $("#document-list").querySelectorAll("[data-source-marker]").forEach((button) => button.addEventListener("click", () => highlightEvidence(button.dataset.sourceDocument, button.dataset.sourceField)));
   $("#document-list").querySelectorAll("[data-open-document-source]").forEach((button) => button.addEventListener("click", () => openSourceDrawer(button.dataset.openDocumentSource, null, button)));
   $("#document-list").querySelectorAll("[data-confirm-document]").forEach((button) => button.addEventListener("click", confirmProfile));
@@ -237,9 +236,9 @@ function highlightEvidence(documentId, fieldName) {
   state.highlightedEvidenceKey = key;
   state.expandedDocuments.add(documentId);
   renderDocuments();
-  const input = document.getElementById(`evidence-${key}`);
-  input?.scrollIntoView({ behavior: "smooth", block: "center" });
-  input?.focus({ preventScroll: true });
+  const sourceMarker = document.querySelector(`[data-source-marker][data-source-document="${CSS.escape(documentId)}"][data-source-field="${CSS.escape(fieldName)}"]`);
+  sourceMarker?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+  sourceMarker?.focus({ preventScroll: true });
   announce(`Highlighted the recovered source for ${fieldName.replaceAll("_", " ")}.`);
 }
 
@@ -293,6 +292,9 @@ function applyEvidenceCorrection(documentId, field, value) {
       if (Number.isFinite(hours) && Number.isFinite(rate)) state.sources[sourceIndex].amount = Math.round(hours * rate * 100) / 100;
     }
   }
+  document.querySelector(`[data-document-confirmation="${CSS.escape(documentId)}"]`)?.removeAttribute("hidden");
+  const evidenceMeta = document.getElementById(`evidence-meta-${evidenceKey(documentId, field)}`);
+  if (evidenceMeta) evidenceMeta.textContent = `${field.replaceAll("_", " ")} transcription corrected; renter confirmation required.`;
   renderProfile();
   renderCalculation();
   renderReadiness();
@@ -625,12 +627,14 @@ function confirmProfile() {
   }
   state.confirmed = true;
   state.lastImpact = [];
+  state.changedDocumentIds.clear();
   $("#profile-state").className = "status ready";
   $("#profile-state").textContent = "Confirmed for this session";
   renderCalculation();
   renderReadiness();
   renderProofChain();
   renderPacketPreview();
+  renderDocuments();
   addAudit("Profile and calculation inputs confirmed");
   announce("Profile confirmed. The deterministic calculation and packet controls are available.");
 }
