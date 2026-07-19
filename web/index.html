@@ -12,7 +12,7 @@
     <header class="site-header">
       <div class="brand"><span class="brand-mark" aria-hidden="true">R</span><span>RealDoor</span></div>
       <p class="boundary">Application readiness, not eligibility</p>
-      <div class="header-actions"><button class="text-button" id="open-demo-paths" type="button">Demo paths</button><button class="text-button" id="delete-session" type="button">Delete session</button></div>
+      <div class="header-actions"><button class="icon-button tooltip-button" id="open-demo-paths" type="button" aria-label="Open demo paths" data-tooltip="Demo paths"><span aria-hidden="true">⌘</span></button><button class="text-button" id="delete-session" type="button">Reset session</button></div>
     </header>
 
     <main id="main" tabindex="-1">
@@ -22,7 +22,7 @@
         <p>RealDoor extracts only allowlisted fields from supplied synthetic fixtures. You confirm every value before it is reused. A qualified human makes any program decision.</p>
         <div class="hero-actions">
           <button class="secondary-button" id="open-consent" type="button">How data is used</button>
-          <button class="secondary-button" id="open-features" type="button">Feature register</button>
+          <button class="icon-button tooltip-button hero-icon-button" id="open-features" type="button" aria-label="Open feature register" data-tooltip="Feature register"><span aria-hidden="true">☷</span></button>
         </div>
       </section>
 
@@ -70,12 +70,8 @@
             </div>
             <aside class="panel evidence-summary" aria-labelledby="evidence-title">
               <h3 id="evidence-title">Evidence policy</h3>
-              <ul>
-                <li><strong>High:</strong> native supplied fixture with a source box.</li>
-                <li><strong>Medium:</strong> rasterized supplied fixture with a source box.</li>
-                <li>Confidence describes evidence quality only. It never scores a renter.</li>
-                <li>Every value still requires renter confirmation.</li>
-              </ul>
+              <p>Evidence quality only—never a renter score.</p>
+              <details class="evidence-policy-details"><summary>What confidence means</summary><ul><li><strong>High:</strong> native supplied fixture with a source box.</li><li><strong>Medium:</strong> rasterized supplied fixture with a source box.</li><li>Every value still requires renter confirmation.</li></ul></details>
             </aside>
           </div>
           <section class="extraction-benchmark" aria-labelledby="benchmark-title">

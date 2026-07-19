@@ -161,7 +161,8 @@ function renderProfile() {
     const source = profileSourceField(field);
     const local = localEvidenceField(field.document_id, field.field);
     const sourceBox = source.bbox ? `box [${source.bbox.join(", ")}]` : "no source box";
-    return `<div class="field-control"><label for="profile-${escapeHtml(key)}">${escapeHtml(field.field.replaceAll("_", " "))}</label><input id="profile-${escapeHtml(key)}" data-profile-key="${escapeHtml(key)}" ${type === "number" ? "min=1 max=99 step=1" : ""} type="${type}" value="${escapeHtml(value)}"><span class="field-meta">${escapeHtml(field.document_id)} · page ${source.page ?? "not recovered"} · ${sourceBox} · ${escapeHtml(source.confidence || "needs review")} confidence${local ? " · local parser candidate" : " · not recovered; frozen fixture reference only"}</span></div>`;
+    const sourceDescription = `${field.document_id} · page ${source.page ?? "not recovered"} · ${sourceBox} · ${source.confidence || "needs review"} confidence${local ? " · local parser candidate" : " · not recovered; frozen fixture reference only"}`;
+    return `<div class="field-control"><label for="profile-${escapeHtml(key)}">${escapeHtml(field.field.replaceAll("_", " "))}</label><input id="profile-${escapeHtml(key)}" data-profile-key="${escapeHtml(key)}" ${type === "number" ? "min=1 max=99 step=1" : ""} type="${type}" value="${escapeHtml(value)}"><span class="field-meta field-source-meta"><button class="source-meta-button tooltip-button" type="button" data-open-profile-source="${escapeHtml(field.document_id)}" data-open-profile-field="${escapeHtml(field.field)}" aria-label="Open source details for ${escapeHtml(field.field.replaceAll("_", " "))}" data-tooltip="${escapeHtml(sourceDescription)}"><span aria-hidden="true">▣</span></button><span>${escapeHtml(local ? `${source.confidence || "needs review"} confidence` : "evidence not recovered")}</span></span></div>`;
   }).join("")}</div>`;
   $("#profile-form").querySelectorAll("input").forEach((input) => input.addEventListener("input", () => {
     state.profile[input.dataset.profileKey] = input.value;
@@ -169,6 +170,7 @@ function renderProfile() {
     renderDocuments();
     markUnconfirmed("A profile value changed. Confirm it before reuse.", impactForField(input.dataset.profileKey.split(":").at(-1)));
   }));
+  $("#profile-form").querySelectorAll("[data-open-profile-source]").forEach((button) => button.addEventListener("click", () => openSourceDrawer(button.dataset.openProfileSource, button.dataset.openProfileField, button)));
 }
 
 function renderDocuments() {
@@ -177,7 +179,7 @@ function renderDocuments() {
   $("#untrusted-summary").textContent = untrustedCount ? `${untrustedCount} supplied fixture(s) contained untrusted text. It was ignored and never shown as an instruction.` : "All displayed values are allowlisted fields only.";
   $("#document-list").innerHTML = documents.map((document) => `
     <details class="evidence-accordion" data-document-id="${escapeHtml(document.document_id)}" ${state.expandedDocuments.has(document.document_id) ? "open" : ""}>
-      <summary><span class="document-summary-title"><span class="eyebrow">${escapeHtml(document.document_type.replaceAll("_", " "))}</span><strong>${escapeHtml(document.file_name)}</strong></span><span class="document-summary-metrics"><span>${document.fields.length} recovered fields</span><span>${document.page_count} page${document.page_count === 1 ? "" : "s"}</span><span class="status ${document.extraction_status === "abstained" ? "needs-review" : document.fields.every((field) => field.confidence === "high") ? "ready" : "pending"}">${document.extraction_status === "abstained" ? "abstained" : document.fields.every((field) => field.confidence === "high") ? "high confidence" : "review evidence"}</span></span></summary>
+      <summary><span class="document-summary-title"><span class="eyebrow">${escapeHtml(document.document_type.replaceAll("_", " "))}</span><strong>${escapeHtml(document.file_name)}</strong></span><span class="document-summary-metrics"><span class="metric-icon tooltip-button" aria-label="${document.fields.length} recovered fields" data-tooltip="${document.fields.length} recovered fields" tabindex="0" role="img">▤</span><span class="metric-icon tooltip-button" aria-label="${document.page_count} page${document.page_count === 1 ? "" : "s"}" data-tooltip="${document.page_count} page${document.page_count === 1 ? "" : "s"}" tabindex="0" role="img">▯</span><span class="status ${document.extraction_status === "abstained" ? "needs-review" : document.fields.every((field) => field.confidence === "high") ? "ready" : "pending"}">${document.extraction_status === "abstained" ? "abstained" : document.fields.every((field) => field.confidence === "high") ? "high confidence" : "review evidence"}</span></span></summary>
       <article class="document-card">
         <div class="document-card-heading"><div><h4>${escapeHtml(document.document_id)}</h4><p class="field-meta">${escapeHtml(document.extraction_engine ? `Parsed by ${document.extraction_engine.replaceAll("_", " ")}` : "Organizer evidence fixture")}</p></div><a class="evidence-link" href="${escapeHtml(servedPath(document.preview_url))}" target="_blank" rel="noreferrer">Open original synthetic PDF</a></div>
         <div class="document-review-workspace">
