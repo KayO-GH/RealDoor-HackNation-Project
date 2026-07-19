@@ -63,7 +63,7 @@ or OpenAI routes. Static browser assets and synthetic PDFs are served from
    ```
 
 The public build accepts no real uploads or accounts. It contains supplied
-synthetic fixtures only; use Reset demo between judge sessions.
+synthetic fixtures only; use the "Reset session" button at the top between judge sessions.
 
 The app requires a renter acknowledgement before loading a supplied synthetic fixture. It does not upload raw PDFs: the browser maps supplied synthetic filenames to organizer-provided fixture metadata. Use HH-001 for the happy path, HH-005 for expired evidence, and HH-002 for conflicting income evidence.
 
