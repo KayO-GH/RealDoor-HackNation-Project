@@ -257,10 +257,10 @@ class VercelAdapterTests(unittest.TestCase):
     def test_catch_all_adapter_serves_ui_api_and_synthetic_document(self):
         client = vercel_app.test_client()
         cases = (
-            ("/api/", b"RealDoor"),
-            ("/api/api/households", b"HH-001"),
-            ("/api/api/households/HH-003/local-evidence", b"local_pdf_text_v1"),
-            ("/api/documents/hh-003_d01_application_summary.pdf", b"%PDF"),
+            ("/api?path=", b"RealDoor"),
+            ("/api?path=api/households", b"HH-001"),
+            ("/api?path=api/households/HH-003/local-evidence", b"local_pdf_text_v1"),
+            ("/api?path=documents/hh-003_d01_application_summary.pdf", b"%PDF"),
         )
         for path, expected in cases:
             with self.subTest(path=path):

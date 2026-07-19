@@ -6,7 +6,7 @@
       "includeFiles": "{web/**,synthetic_documents/**,rules/**,governance/**,data/**,evaluation/**}"
     }
   },
-  "routes": [
-    { "src": "/(.*)", "dest": "/api/$1" }
+  "rewrites": [
+    { "source": "/:path*", "destination": "/api" }
   ]
 }
