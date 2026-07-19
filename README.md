@@ -29,6 +29,10 @@ The app requires a renter acknowledgement before loading a supplied synthetic fi
 
 Use **HH-003** for the happy path: its profile and calculation inputs have readable local evidence. Use HH-005 for expired evidence, HH-002 for a preserved pay-stub conflict, and HH-001 to demonstrate a correctly held calculation when the required source is raster-only.
 
+## Hosted Demo Boundary
+
+The Vercel adapter is a hosted **synthetic-only** demo. It accepts only exact supplied fixture bytes and never accepts real-renter files; the local `app.py` flow remains the offline scored path.
+
 ## Verify Before a Demo or Commit
 
 ```bash
