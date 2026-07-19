@@ -6,7 +6,6 @@ const state = {
   evidence: {},
   audit: [],
   consent: null,
-  consentAcknowledged: false,
   expandedDocuments: new Set(),
   changedDocumentIds: new Set(),
   highlightedEvidenceKey: null,
@@ -341,10 +340,6 @@ function confirmProfile() {
 }
 
 async function loadHousehold(householdId, source) {
-  if (!state.consentAcknowledged) {
-    announce("Acknowledge the synthetic-data use summary before loading a fixture.");
-    return;
-  }
   try {
     const payload = await getJson(`/api/households/${encodeURIComponent(householdId)}`);
     state.payload = payload;
@@ -361,7 +356,7 @@ async function loadHousehold(householdId, source) {
     $("#session-content").hidden = false;
     $("#fixture-select").value = householdId;
     renderAll();
-    addAudit("Renter acknowledged synthetic-data use and session deletion");
+    addAudit("Synthetic session started");
     addAudit(`Loaded ${householdId} from ${source}`);
     announce(`${householdId} loaded. Review the profile and confirm values before calculating.`);
   } catch (error) {
@@ -415,14 +410,10 @@ function deleteSession() {
   state.sources = [];
   state.evidence = {};
   state.audit = [];
-  state.consentAcknowledged = false;
   $("#session-content").hidden = true;
   $("#session-empty").hidden = false;
   $("#fixture-select").value = "";
-  $("#fixture-select").disabled = true;
-  $("#consent-check").checked = false;
   $("#file-input").value = "";
-  $("#file-input").disabled = true;
   $("#packet-note").value = "";
   $("#upload-status").textContent = "Session deleted. No document contents were retained by this app.";
   $("#audit-list").innerHTML = "";
@@ -463,13 +454,6 @@ function showFeatures() {
 function chooseDemoPath(button) {
   const drawer = $("#demo-paths-drawer");
   drawer.close();
-  if (!state.consentAcknowledged) {
-    state.consentAcknowledged = true;
-    $("#consent-check").checked = true;
-    $("#fixture-select").disabled = false;
-    $("#file-input").disabled = false;
-    $("#upload-status").textContent = "Consent recorded for this browser session. You can now choose supplied synthetic PDFs or a demo household.";
-  }
   if (button.dataset.demoHousehold) {
     loadHousehold(button.dataset.demoHousehold, "demo path");
     return;
@@ -483,13 +467,6 @@ async function init() {
   state.consent = await getJson("/api/consent");
   const households = await getJson("/api/households");
   $("#fixture-select").insertAdjacentHTML("beforeend", households.map((household) => `<option value="${household.household_id}">${household.household_id} · ${escapeHtml(household.scenario.replaceAll("_", " "))}</option>`).join(""));
-  $("#consent-check").addEventListener("change", (event) => {
-    state.consentAcknowledged = event.target.checked;
-    $("#fixture-select").disabled = !event.target.checked;
-    $("#file-input").disabled = !event.target.checked;
-    $("#upload-status").textContent = event.target.checked ? "Consent recorded for this browser session. You can now choose supplied synthetic PDFs or a demo household." : "Acknowledge the local data-use summary to begin. No document contents are sent to the server.";
-    announce(event.target.checked ? "Consent recorded for this browser session." : "Consent acknowledgement removed.");
-  });
   $("#fixture-select").addEventListener("change", (event) => event.target.value && loadHousehold(event.target.value, "demo fixture selector"));
   $("#file-input").addEventListener("change", (event) => {
     const files = [...event.target.files];

@@ -43,14 +43,14 @@
           <p>Choose a supplied household for the demo, or select its local PDFs. File contents are never uploaded; only known supplied fixture filenames are matched in this browser.</p>
         </div>
         <div class="controls">
-          <label class="consent-check" for="consent-check"><input id="consent-check" type="checkbox"> I understand the synthetic-data use and session-deletion controls.</label>
+          <p class="help-text synthetic-footnote">By using this application, <strong>I understand the synthetic-data use and session-deletion controls.</strong></p>
           <label for="fixture-select">Demo household</label>
-          <select id="fixture-select" aria-describedby="fixture-help" disabled>
+          <select id="fixture-select" aria-describedby="fixture-help">
             <option value="">Choose a synthetic household</option>
           </select>
           <p id="fixture-help" class="help-text">HH-001 is the recommended happy path. HH-005 demonstrates expired evidence; HH-002 demonstrates a conflict.</p>
-          <label class="upload-control" for="file-input">Choose supplied PDFs<input id="file-input" type="file" accept="application/pdf" multiple disabled></label>
-          <p class="help-text" id="upload-status">Acknowledge the local data-use summary to begin. No document contents are sent to the server.</p>
+          <label class="upload-control" for="file-input">Choose supplied PDFs<input id="file-input" type="file" accept="application/pdf" multiple></label>
+          <p class="help-text" id="upload-status">No document contents are sent to the server.</p>
         </div>
       </section>
 

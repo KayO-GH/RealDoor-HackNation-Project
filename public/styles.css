@@ -36,9 +36,8 @@ select, input, textarea { width:100%; color:var(--ink); border:1px solid #aebdce
 textarea { resize:vertical; }
 .upload-control { display:block; margin-top:.75rem; padding:.7rem .85rem; color:var(--navy); background:#eff7ff; border:1px dashed #78a8d1; border-radius:8px; cursor:pointer; }
 .upload-control input { display:block; margin-top:.4rem; padding:0; border:0; background:transparent; }
-.consent-check { display:flex; gap:.55rem; align-items:start; font-weight:650; }
-.consent-check input { width:auto; margin-top:.25rem; }
 .help-text { margin:.25rem 0; color:var(--muted); font-size:.86rem; }
+.synthetic-footnote { margin-bottom:.55rem; font-size:.78rem; }
 .empty-state { margin-top:1.5rem; color:var(--muted); text-align:center; }
 .stage { margin-top:3.4rem; scroll-margin-top:1rem; }
 .muted-stage { padding:2rem clamp(0rem,2vw,1.5rem); margin-left:calc(-1 * clamp(0rem,2vw,1.5rem)); margin-right:calc(-1 * clamp(0rem,2vw,1.5rem)); background:#edf3fa; }
