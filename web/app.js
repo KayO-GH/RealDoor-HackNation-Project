@@ -17,6 +17,12 @@ const formatMoney = (value) => Number.isFinite(Number(value)) ? new Intl.NumberF
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#039;", '"': "&quot;" })[character]);
 const multiplier = { weekly: 52, biweekly: 26, semimonthly: 24, monthly: 12, annual: 1 };
 const thresholdTable = { 1: 72000, 2: 82320, 3: 92580, 4: 102840, 5: 111120, 6: 119340, 7: 127560, 8: 135780 };
+const isLocalRuntime = ["127.0.0.1", "localhost"].includes(window.location.hostname);
+const apiPath = (path) => {
+  const normalized = String(path).replace(/^\/+/, "");
+  return isLocalRuntime ? `/${normalized}` : `/api?path=${encodeURIComponent(normalized)}`;
+};
+const servedPath = (path) => isLocalRuntime ? path : apiPath(path);
 
 function announce(message) {
   $("#live-status").textContent = message;
@@ -167,7 +173,7 @@ function renderDocuments() {
     <article class="document-card">
       <div class="doc-meta"><span>${escapeHtml(document.document_type.replaceAll("_", " "))}</span><span>${escapeHtml(document.document_id)}</span></div>
       <h4>${escapeHtml(document.file_name)}</h4>
-      <a class="evidence-link" href="${escapeHtml(document.preview_url)}" target="_blank" rel="noreferrer">Open original synthetic PDF</a>
+      <a class="evidence-link" href="${escapeHtml(servedPath(document.preview_url))}" target="_blank" rel="noreferrer">Open original synthetic PDF</a>
       <p class="field-meta">${escapeHtml(document.extraction_engine ? `Parsed by ${document.extraction_engine.replaceAll("_", " ")}` : "Organizer evidence fixture")}</p>
       ${sourceMapMarkup(document)}
       ${document.contains_untrusted_content ? `<p class="untrusted">${escapeHtml(document.untrusted_content_handling)}</p>` : ""}
@@ -556,8 +562,8 @@ async function loadHousehold(householdId, source, uploadedEvidence = null) {
   }
   try {
     const [payload, localEvidence] = await Promise.all([
-      getJson(`/api/households/${encodeURIComponent(householdId)}`),
-      uploadedEvidence ? Promise.resolve(uploadedEvidence) : getJson(`/api/households/${encodeURIComponent(householdId)}/local-evidence`),
+      getJson(apiPath(`api/households/${encodeURIComponent(householdId)}`)),
+      uploadedEvidence ? Promise.resolve(uploadedEvidence) : getJson(apiPath(`api/households/${encodeURIComponent(householdId)}/local-evidence`)),
     ]);
     state.payload = payload;
     state.localEvidence = localEvidence;
@@ -658,9 +664,7 @@ async function askQuestion(event) {
   if (!question) return;
   const household = state.payload?.household_id || "";
   try {
-    const response = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question, household }), cache: "no-store" });
-    const answer = await response.json();
-    if (!response.ok) throw new Error(answer.error || "Unable to answer the local question.");
+    const answer = await postJson(apiPath("api/ask"), { question, household });
     $("#answer").innerHTML = `<strong>${escapeHtml(answer.answer)}</strong>${(answer.citations || []).map((citation) => `<div class="citation">${citationMarkup(citation)}</div>`).join("")}`;
     addAudit("Asked a local rules or safety question");
     announce("Local rules answer updated with citations.");
@@ -681,7 +685,7 @@ async function runSafetyProof() {
   $("#safety-proof-results").innerHTML = "<p class=\"help-text\">Running local checks...</p>";
   try {
     const results = await Promise.all(checks.map(async (check) => {
-      const answer = await postJson("/api/ask", { question: check.question, household: state.payload.household_id });
+      const answer = await postJson(apiPath("api/ask"), { question: check.question, household: state.payload.household_id });
       return { ...check, answer, passed: answer.answer.toLowerCase().includes(check.expected) };
     }));
     $("#safety-proof-results").innerHTML = `<ul class="safety-results">${results.map((result) => `<li><span class="status ${result.passed ? "ready" : "needs-review"}">${result.passed ? "Passed" : "Needs review"}</span><strong>${escapeHtml(result.label)}</strong><p>${escapeHtml(result.answer.answer)}</p></li>`).join("")}</ul>`;
@@ -707,7 +711,7 @@ function showFeatures() {
 }
 
 async function init() {
-  const [consent, households, propertyContext] = await Promise.all([getJson("/api/consent"), getJson("/api/households"), getJson("/api/properties")]);
+  const [consent, households, propertyContext] = await Promise.all([getJson(apiPath("api/consent")), getJson(apiPath("api/households")), getJson(apiPath("api/properties"))]);
   state.consent = consent;
   state.propertyContext = propertyContext;
   populateDiscoverCities();
@@ -731,7 +735,7 @@ async function init() {
     const householdId = `HH-${matches[0][1]}`;
     try {
       $("#upload-status").textContent = `${files.length} synthetic PDF(s) selected. Parsing exact supplied bytes in local memory...`;
-      const uploadedEvidence = await postJson("/api/local-evidence", { files: await Promise.all(files.map(async (file) => {
+      const uploadedEvidence = await postJson(apiPath("api/local-evidence"), { files: await Promise.all(files.map(async (file) => {
         const bytes = new Uint8Array(await file.arrayBuffer());
         let binary = "";
         for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
