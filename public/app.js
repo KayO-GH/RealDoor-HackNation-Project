@@ -11,6 +11,7 @@ const state = {
   changedDocumentIds: new Set(),
   highlightedEvidenceKey: null,
   lastSourceTrigger: null,
+  lastDemoPathsTrigger: null,
   baselineCalculation: null,
 };
 
@@ -459,6 +460,25 @@ function showFeatures() {
   $("#feature-dialog").showModal();
 }
 
+function chooseDemoPath(button) {
+  const drawer = $("#demo-paths-drawer");
+  drawer.close();
+  if (!state.consentAcknowledged) {
+    state.consentAcknowledged = true;
+    $("#consent-check").checked = true;
+    $("#fixture-select").disabled = false;
+    $("#file-input").disabled = false;
+    $("#upload-status").textContent = "Consent recorded for this browser session. You can now choose supplied synthetic PDFs or a demo household.";
+  }
+  if (button.dataset.demoHousehold) {
+    loadHousehold(button.dataset.demoHousehold, "demo path");
+    return;
+  }
+  $("#question").value = button.dataset.demoQuestion;
+  $("#question").focus();
+  announce("Safety prompt added to the local rules question field. Select Ask to test the boundary.");
+}
+
 async function init() {
   state.consent = await getJson("/api/consent");
   const households = await getJson("/api/households");
@@ -486,24 +506,18 @@ async function init() {
   $("#download-packet").addEventListener("click", downloadPacket);
   $("#packet-note").addEventListener("input", renderPacketPreview);
   $("#delete-session").addEventListener("click", deleteSession);
-  document.querySelectorAll("[data-scenario]").forEach((button) => button.addEventListener("click", () => {
-    if (!state.consentAcknowledged) {
-      $("#consent-check").focus();
-      announce("Acknowledge the synthetic-data use summary before choosing a judge scenario.");
-      return;
-    }
-    loadHousehold(button.dataset.scenario, "judge scenario control");
-  }));
-  document.querySelectorAll("[data-scenario-question]").forEach((button) => button.addEventListener("click", () => {
-    $("#question").value = button.dataset.scenarioQuestion;
-    $("#question").focus();
-    announce("Safety prompt added to the local rules question field. Select Ask to test the boundary.");
-  }));
+  $("#open-demo-paths").addEventListener("click", (event) => {
+    state.lastDemoPathsTrigger = event.currentTarget;
+    $("#demo-paths-drawer").showModal();
+    $("#demo-paths-drawer").querySelector("[data-demo-household], [data-demo-question]")?.focus();
+  });
+  document.querySelectorAll("[data-demo-household], [data-demo-question]").forEach((button) => button.addEventListener("click", () => chooseDemoPath(button)));
   $("#question-form").addEventListener("submit", askQuestion);
   $("#open-consent").addEventListener("click", showConsent);
   $("#open-features").addEventListener("click", showFeatures);
   document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => $(`#${button.dataset.close}`).close()));
   $("#source-drawer").addEventListener("close", () => state.lastSourceTrigger?.focus());
+  $("#demo-paths-drawer").addEventListener("close", () => state.lastDemoPathsTrigger?.focus());
 }
 
 init().catch((error) => {
