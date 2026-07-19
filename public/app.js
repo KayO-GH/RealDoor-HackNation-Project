@@ -8,6 +8,7 @@ const state = {
   consent: null,
   consentAcknowledged: false,
   expandedDocuments: new Set(),
+  changedDocumentIds: new Set(),
   highlightedEvidenceKey: null,
   lastSourceTrigger: null,
   baselineCalculation: null,
@@ -99,7 +100,7 @@ function renderDocuments() {
         const confirmation = state.evidence[key] === undefined ? "pending" : "corrected";
         const highlighted = state.highlightedEvidenceKey === key;
         return `<tr id="evidence-row-${escapeHtml(key)}" class="${highlighted ? "evidence-highlighted" : ""}"><td><label for="evidence-${escapeHtml(key)}"><strong>${escapeHtml(field.field.replaceAll("_", " "))}</strong></label><input id="evidence-${escapeHtml(key)}" data-evidence-document="${escapeHtml(document.document_id)}" data-evidence-field="${escapeHtml(field.field)}" value="${escapeHtml(value)}" aria-describedby="evidence-meta-${escapeHtml(key)}"><span id="evidence-meta-${escapeHtml(key)}" class="field-meta">${escapeHtml(field.purpose)} · ${escapeHtml(confirmation)}; renter confirmation required</span></td><td><button class="source-locate" type="button" data-highlight-document="${escapeHtml(document.document_id)}" data-highlight-field="${escapeHtml(field.field)}">Highlight</button><br><span class="status ${field.confidence === "high" ? "ready" : "pending"}">${escapeHtml(field.confidence)}</span></td></tr>`;
-      }).join("")}</tbody></table><div class="form-actions document-confirm-action"><button class="primary-button" type="button" data-confirm-document="${escapeHtml(document.document_id)}" ${state.confirmed ? "disabled" : ""}>${state.confirmed ? "Inputs confirmed" : "Confirm changes"}</button><span class="field-meta">Confirms all current profile and evidence inputs.</span></div></div><div class="document-source-preview"><div class="source-preview-heading"><div><h5>Source page</h5><p class="help-text">Purple markers show allowlisted source boxes. Select one to highlight its confirmation field.</p></div><button class="text-button" type="button" data-open-document-source="${escapeHtml(document.document_id)}">Open larger view</button></div>${documentSourcePreviewMarkup(document)}</div></div>
+      }).join("")}</tbody></table>${state.changedDocumentIds.has(document.document_id) ? `<div class="form-actions document-confirm-action"><button class="primary-button" type="button" data-confirm-document="${escapeHtml(document.document_id)}">Confirm changes</button><span class="field-meta">Confirms all current profile and evidence inputs.</span></div>` : ""}</div><div class="document-source-preview"><div class="source-preview-heading"><div><h5>Source page</h5><p class="help-text">Purple markers show allowlisted source boxes. Select one to highlight its confirmation field.</p></div><button class="text-button" type="button" data-open-document-source="${escapeHtml(document.document_id)}">Open larger view</button></div>${documentSourcePreviewMarkup(document)}</div></div>
       </div>
     </details>`).join("");
   $("#document-list").querySelectorAll("input[data-evidence-document]").forEach((input) => input.addEventListener("input", () => {
@@ -131,6 +132,7 @@ function highlightEvidence(documentId, fieldName) {
   state.expandedDocuments.add(documentId);
   renderDocuments();
   const input = document.getElementById(`evidence-${key}`);
+  input?.scrollIntoView({ behavior: "smooth", block: "center" });
   input?.focus({ preventScroll: true });
   announce(`Highlighted the supplied source for ${fieldName.replaceAll("_", " ")}.`);
 }
@@ -161,6 +163,8 @@ function fieldValueFromEvidence(documentId, field) {
 }
 
 function applyEvidenceCorrection(documentId, field, value) {
+  const needsConfirmation = !state.changedDocumentIds.has(documentId);
+  state.changedDocumentIds.add(documentId);
   state.evidence[evidenceKey(documentId, field)] = value;
   const profileField = state.payload.profile_fields.find((item) => item.document_id === documentId && item.field === field);
   if (profileField) state.profile[valueKey(profileField)] = value;
@@ -179,6 +183,7 @@ function applyEvidenceCorrection(documentId, field, value) {
   renderReadiness();
   renderPacketPreview();
   markUnconfirmed("An extracted value changed. Confirm it before reuse.");
+  if (needsConfirmation) requestAnimationFrame(() => [...document.querySelectorAll("[data-confirm-document]")].find((button) => button.dataset.confirmDocument === documentId)?.scrollIntoView({ behavior: "smooth", block: "center" }));
 }
 
 function renderCalculation() {
@@ -325,6 +330,7 @@ function confirmProfile() {
     return;
   }
   state.confirmed = true;
+  state.changedDocumentIds.clear();
   $("#profile-state").className = "status ready";
   $("#profile-state").textContent = "Confirmed for this session";
   renderDocuments();
@@ -348,6 +354,7 @@ async function loadHousehold(householdId, source) {
     state.sources = payload.income_sources.map((sourceItem) => ({ ...sourceItem }));
     state.evidence = {};
     state.expandedDocuments = new Set();
+    state.changedDocumentIds = new Set();
     state.highlightedEvidenceKey = null;
     state.baselineCalculation = currentCalculation();
     state.audit = [];
