@@ -130,7 +130,7 @@ class LocalPdfEvidenceExtractor:
                 value = self._typed_value(candidate, kind)
                 if value is None or field not in ALLOWLISTED_FIELDS:
                     continue
-                source = self._source_box(pages, candidate)
+                source = self._source_box(pages, label, candidate)
                 confidence = "high" if source else "medium"
                 fields.append({
                     "field": field,
@@ -182,15 +182,23 @@ class LocalPdfEvidenceExtractor:
         return None
 
     @staticmethod
-    def _source_box(pages: list[fitz.Page], raw_value: str) -> dict[str, Any] | None:
+    def _source_box(pages: list[fitz.Page], label: str, raw_value: str) -> dict[str, Any] | None:
+        candidates: list[tuple[float, int, fitz.Rect]] = []
         for page_number, page in enumerate(pages, start=1):
-            hits = page.search_for(raw_value)
-            if not hits:
-                continue
-            box = hits[0]
-            height = page.rect.height
-            return {
-                "page": page_number,
-                "bbox": [round(box.x0, 2), round(height - box.y1, 2), round(box.x1, 2), round(height - box.y0, 2)],
-            }
+            label_hits = page.search_for(label)
+            value_hits = page.search_for(raw_value)
+            for label_box in label_hits:
+                for value_box in value_hits:
+                    if value_box.y0 < label_box.y1 - 4:
+                        continue
+                    distance = (value_box.y0 - label_box.y1) * 2 + abs(value_box.x0 - label_box.x0)
+                    candidates.append((distance, page_number, value_box))
+        if not candidates:
+            return None
+        _, page_number, box = min(candidates, key=lambda candidate: candidate[0])
+        height = pages[page_number - 1].rect.height
+        return {
+            "page": page_number,
+            "bbox": [round(box.x0, 2), round(height - box.y1, 2), round(box.x1, 2), round(height - box.y0, 2)],
+        }
         return None

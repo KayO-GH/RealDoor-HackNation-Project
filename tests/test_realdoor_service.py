@@ -71,6 +71,22 @@ class RealDoorServiceTests(unittest.TestCase):
         self.assertEqual(benchmark["allowlisted_fields"]["extracted"], 104)
         self.assertEqual(benchmark["documents"]["abstained_raster_only"], 8)
 
+    def test_local_source_boxes_overlap_the_labeled_fixture_values(self):
+        expected_documents = {
+            document["document_id"]: {field["field"]: field["bbox"] for field in document["fields"]}
+            for household in self.service.household_summaries()
+            for document in self.service.household_payload(household["household_id"])["documents"]
+        }
+        for household in self.service.household_summaries():
+            evidence = self.service.local_evidence_payload(household["household_id"])
+            for document in evidence["documents"]:
+                for field in document["fields"]:
+                    with self.subTest(document=document["document_id"], field=field["field"]):
+                        actual = field["bbox"]
+                        expected = expected_documents[document["document_id"]][field["field"]]
+                        self.assertGreater(min(actual[2], expected[2]) - max(actual[0], expected[0]), 0)
+                        self.assertGreater(min(actual[3], expected[3]) - max(actual[1], expected[1]), 0)
+
     def test_rendered_previews_cover_every_supplied_fixture(self):
         documents = sorted((ROOT / "synthetic_documents/documents").glob("*.pdf"))
         previews = ROOT / "web/previews"
