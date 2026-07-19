@@ -43,6 +43,28 @@ both `OPENAI_ENABLED=true` and `OPENAI_DATA_CONTROLS_APPROVED=true` are set.
 The API uses `store=false` and never uses OpenAI Files, Assistants, or vector
 stores for renter documents.
 
+## Deploy the public synthetic judge demo
+
+The Vercel deployment uses `realdoor.judge_api:app`, which exposes only the
+synthetic demo endpoints. It does not include the v1 upload, SQLite, magic-link,
+or OpenAI routes. Static browser assets and synthetic PDFs are served from
+`public/`.
+
+1. Import this repository into one Vercel project with the repository root as
+   its root directory.
+2. Set `REALDOOR_DEPLOYMENT_MODE=judge_demo` for Preview and Production. Do not
+   add OpenAI, database, storage, or mail credentials.
+3. Deploy a branch for a Preview URL, then promote the validated default branch
+   to Production. Use the generated `*.vercel.app` URL for judges.
+4. After each deployment, run:
+
+   ```bash
+   uv run python scripts/smoke_judge_demo.py https://your-project.vercel.app
+   ```
+
+The public build accepts no real uploads or accounts. It contains supplied
+synthetic fixtures only; use Reset demo between judge sessions.
+
 The app requires a renter acknowledgement before loading a supplied synthetic fixture. It does not upload raw PDFs: the browser maps supplied synthetic filenames to organizer-provided fixture metadata. Use HH-001 for the happy path, HH-005 for expired evidence, and HH-002 for conflicting income evidence.
 
 ## Verify Before a Demo or Commit

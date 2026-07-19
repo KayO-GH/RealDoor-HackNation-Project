@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "realdoor/judge_api.py": {
+      "maxDuration": 30,
+      "excludeFiles": "{tests/**,web/**,starter/**,participant-guide/**,synthetic_documents/documents/**,data/realdoor_data_pack.xlsx}"
+    }
+  },
+  "headers": [
+    {
+      "source": "/documents/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/(app.js|styles.css)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
+    }
+  ]
+}

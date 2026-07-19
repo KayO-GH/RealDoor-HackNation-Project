@@ -16,7 +16,7 @@ from realdoor.service import RealDoorService
 
 ROOT = Path(__file__).parent.resolve()
 SERVICE = RealDoorService(ROOT)
-STATIC_ROOT = ROOT / "web"
+STATIC_ROOT = ROOT / "public"
 DOCUMENT_ROOT = ROOT / "synthetic_documents" / "documents"
 
 
