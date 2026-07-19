@@ -7,6 +7,8 @@ const state = {
   audit: [],
   consent: null,
   consentAcknowledged: false,
+  focusedEvidenceKey: null,
+  baselineCalculation: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -91,23 +93,37 @@ function renderDocuments() {
         const key = evidenceKey(document.document_id, field.field);
         const value = state.evidence[key] ?? field.value;
         const confirmation = state.evidence[key] === undefined ? "pending" : "corrected";
-        return `<tr><td><label for="evidence-${escapeHtml(key)}"><strong>${escapeHtml(field.field.replaceAll("_", " "))}</strong></label><input id="evidence-${escapeHtml(key)}" data-evidence-document="${escapeHtml(document.document_id)}" data-evidence-field="${escapeHtml(field.field)}" value="${escapeHtml(value)}" aria-describedby="evidence-meta-${escapeHtml(key)}"><span id="evidence-meta-${escapeHtml(key)}" class="field-meta">${escapeHtml(field.purpose)} · ${escapeHtml(confirmation)}; renter confirmation required</span></td><td>p. ${field.page}<br>box [${field.bbox.join(", ")}]<br><span class="status ${field.confidence === "high" ? "ready" : "pending"}">${escapeHtml(field.confidence)}</span></td></tr>`;
+        const focused = state.focusedEvidenceKey === key;
+        return `<tr id="evidence-row-${escapeHtml(key)}" class="${focused ? "evidence-focused" : ""}"><td><label for="evidence-${escapeHtml(key)}"><strong>${escapeHtml(field.field.replaceAll("_", " "))}</strong></label><input id="evidence-${escapeHtml(key)}" data-evidence-document="${escapeHtml(document.document_id)}" data-evidence-field="${escapeHtml(field.field)}" value="${escapeHtml(value)}" aria-describedby="evidence-meta-${escapeHtml(key)}"><span id="evidence-meta-${escapeHtml(key)}" class="field-meta">${escapeHtml(field.purpose)} · ${escapeHtml(confirmation)}; renter confirmation required</span></td><td>p. ${field.page}<br>box [${field.bbox.join(", ")}]<br><button class="source-locate" type="button" data-focus-evidence="${escapeHtml(key)}">${focused ? "Source highlighted" : "Locate source"}</button><br><span class="status ${field.confidence === "high" ? "ready" : "pending"}">${escapeHtml(field.confidence)}</span></td></tr>`;
       }).join("")}</tbody></table>
     </article>`).join("");
   $("#document-list").querySelectorAll("input[data-evidence-document]").forEach((input) => input.addEventListener("input", () => {
     applyEvidenceCorrection(input.dataset.evidenceDocument, input.dataset.evidenceField, input.value);
   }));
+  $("#document-list").querySelectorAll("[data-focus-evidence]").forEach((button) => button.addEventListener("click", () => focusEvidence(button.dataset.focusEvidence)));
+  $("#document-list").querySelectorAll("[data-source-evidence]").forEach((button) => button.addEventListener("click", () => focusEvidence(button.dataset.sourceEvidence)));
 }
 
 function sourceMapMarkup(document) {
-  return `<figure class="source-map"><figcaption>Page 1 evidence-box map. Each outlined rectangle corresponds to an allowlisted field below.</figcaption><div class="source-page" role="img" aria-label="Page 1 source-box map for ${escapeHtml(document.document_id)}">${document.fields.map((field) => {
+  return `<figure class="source-map"><figcaption>Page 1 evidence-box map. Select a box or field control to connect the allowlisted value to its source location.</figcaption><div class="source-page" role="group" aria-label="Page 1 source-box map for ${escapeHtml(document.document_id)}">${document.fields.map((field) => {
     const [x1, y1, x2, y2] = field.bbox;
     const left = (x1 / 612) * 100;
     const top = ((792 - y2) / 792) * 100;
     const width = Math.max(((x2 - x1) / 612) * 100, 1.2);
     const height = Math.max(((y2 - y1) / 792) * 100, 1.2);
-    return `<span class="source-box" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;" title="${escapeHtml(field.field)} · page ${field.page} · box [${field.bbox.join(", ")}]"></span>`;
+    const key = evidenceKey(document.document_id, field.field);
+    const focused = state.focusedEvidenceKey === key;
+    return `<button class="source-box ${focused ? "source-box-focused" : ""}" type="button" data-source-evidence="${escapeHtml(key)}" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;" aria-label="Locate ${escapeHtml(field.field.replaceAll("_", " "))}: page ${field.page}, box ${field.bbox.join(", ")}" title="${escapeHtml(field.field)} · page ${field.page} · box [${field.bbox.join(", ")}]"></button>`;
   }).join("")}</div></figure>`;
+}
+
+function focusEvidence(key) {
+  state.focusedEvidenceKey = key;
+  renderDocuments();
+  const row = document.getElementById(`evidence-row-${key}`);
+  row?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  row?.querySelector("input")?.focus({ preventScroll: true });
+  announce("Source box highlighted for the selected allowlisted field.");
 }
 
 function fieldValueFromEvidence(documentId, field) {
@@ -149,6 +165,8 @@ function renderCalculation() {
   $("#calculation-content").hidden = false;
   $("#download-packet").disabled = false;
   const comparisonText = calculation.comparison === "below_or_equal" ? "At or below frozen threshold" : calculation.comparison === "above" ? "Above frozen threshold" : "No frozen threshold available";
+  const replayMarkup = calculationReplayMarkup(calculation);
+  queueMicrotask(() => document.querySelector("#calculation-summary")?.insertAdjacentHTML("beforeend", replayMarkup));
   $("#calculation-summary").innerHTML = `<p>${escapeHtml(state.payload.calculation.formula)}</p><div class="calculation-result"><div class="stat"><span>Confirmed annualized income</span><strong>${formatMoney(calculation.annualizedIncome)}</strong></div><div class="stat"><span>60% threshold · household ${calculation.householdSize}</span><strong>${calculation.threshold === null ? "Needs review" : formatMoney(calculation.threshold)}</strong></div><div class="stat"><span>Comparison</span><strong>${escapeHtml(comparisonText)}</strong></div></div><div class="citation"><p><strong>Calculation convention</strong></p>${citationMarkup(state.payload.calculation.calculation_citation)}</div>${calculation.threshold ? `<div class="citation"><p><strong>Threshold citation</strong></p>${citationMarkup(state.payload.calculation.threshold_citation)}</div>` : ""}`;
   $("#income-source-list").innerHTML = calculation.sources.map((source, index) => `<div class="source-row"><label>${escapeHtml(source.label)}<input type="number" min="0" step="0.01" data-source-amount="${index}" value="${escapeHtml(source.amount)}"><span class="field-meta">Amount per ${escapeHtml(source.frequency)}</span></label><label>Frequency<select data-source-frequency="${index}">${Object.keys(multiplier).map((frequency) => `<option value="${frequency}" ${source.frequency === frequency ? "selected" : ""}>${frequency}</option>`).join("")}</select></label><div><strong>${formatMoney(source.annualized)}</strong><br><span class="field-meta">annualized · ${escapeHtml(source.document_id)}</span></div></div><div class="citation">${fieldCitationMarkup(source.citation)}</div>`).join("");
   $("#income-source-list").querySelectorAll("input, select").forEach((input) => input.addEventListener("input", () => {
@@ -157,6 +175,17 @@ function renderCalculation() {
     if (input.dataset.sourceFrequency !== undefined) state.sources[index].frequency = input.value;
     markUnconfirmed("An income input changed. Confirm it before reuse.");
   }));
+}
+
+function calculationReplayMarkup(calculation) {
+  const baseline = state.baselineCalculation;
+  if (!baseline) return "";
+  const incomeDelta = calculation.annualizedIncome - baseline.annualizedIncome;
+  const thresholdDelta = (calculation.threshold ?? 0) - (baseline.threshold ?? 0);
+  const changedSources = calculation.sources.filter((source, index) => source.amount !== baseline.sources[index]?.amount || source.frequency !== baseline.sources[index]?.frequency);
+  if (incomeDelta === 0 && thresholdDelta === 0 && !changedSources.length) return `<div class="calculation-replay"><strong>Replay check:</strong> confirmed inputs still match the supplied fixture.</div>`;
+  const direction = incomeDelta > 0 ? "increased" : incomeDelta < 0 ? "decreased" : "did not change";
+  return `<div class="calculation-replay"><h4>Change replay</h4><p>Annualized income ${direction} by <strong>${formatMoney(Math.abs(incomeDelta))}</strong> from the supplied fixture.</p>${changedSources.length ? `<ul>${changedSources.map((source) => `<li>${escapeHtml(source.label)} now uses ${formatMoney(source.amount)} per ${escapeHtml(source.frequency)}.</li>`).join("")}</ul>` : ""}${thresholdDelta !== 0 ? `<p>The household-size threshold changed by ${formatMoney(Math.abs(thresholdDelta))} after the profile correction.</p>` : ""}<p class="field-meta">Reconfirm before this replay can be included in the packet.</p></div>`;
 }
 
 function citationMarkup(citation) {
@@ -176,9 +205,20 @@ function renderReadiness() {
   const readiness = currentReadiness();
   const reasons = readiness.reasons;
   const status = readiness.status;
-  const reasonMarkup = reasons.length ? `<ul class="reason-list">${reasons.map((reason) => `<li><strong>${escapeHtml(reason)}</strong></li>`).join("")}</ul>` : "<p>No review reason is present in the supplied gold checklist.</p>";
+  const reasonMarkup = reasons.length ? `<div class="diagnostic-list">${reasons.map((reason) => readinessDiagnostic(reason)).join("")}</div>` : "<p class=\"ready-message\"><strong>No supplied review gap is present.</strong> The packet is ready for a qualified human to review; it is not an eligibility result.</p>";
   const missingMarkup = readiness.missing_document_types.length ? `<p><strong>Document context:</strong> ${escapeHtml(readiness.missing_document_types.join(", "))} is not present in this supplied fixture. Follow the frozen checklist and reviewer guidance.</p>` : "";
   $("#readiness-content").innerHTML = `<div class="readiness-summary"><span class="status ${statusClass(status)}">${escapeHtml(status.replaceAll("_", " "))}</span><span>This is readiness only, never an eligibility determination.</span></div><h4>Review reasons</h4>${reasonMarkup}${missingMarkup}<div class="citation">${citationMarkup(readiness.citation)}</div>`;
+}
+
+function readinessDiagnostic(reason) {
+  const diagnostics = {
+    EMPLOYMENT_LETTER_EXPIRED: { title: "Employment letter is outside the challenge's 60-day convention", detail: "The supplied employment letter date is more than 60 days before 2026-07-18.", next: "Ask a qualified reviewer which current employer evidence they need; do not change the source date unless the original document was read incorrectly." },
+    PAY_STUB_TOTAL_CONFLICT: { title: "Pay-stub totals do not reconcile", detail: "The displayed gross pay differs from regular hours × hourly rate.", next: "Recheck the source box and correct only a confirmed transcription error. Otherwise preserve the conflict for human review." },
+    GIG_INCOME_UNCORROBORATED: { title: "Gig income needs corroboration", detail: "The supplied statement shows gig receipts, but the frozen checklist requires a reviewer to examine supporting evidence.", next: "Keep the statement in the packet and ask a qualified reviewer what corroborating record is appropriate." },
+    NO_FROZEN_THRESHOLD: { title: "No frozen threshold is available", detail: "This household size is outside the supplied 2026 threshold table.", next: "Do not estimate or substitute another year. Ask a qualified reviewer for the applicable published threshold." },
+  };
+  const item = diagnostics[reason] || { title: reason.replaceAll("_", " "), detail: "This supplied checklist condition requires review.", next: "Keep the evidence traceable and ask a qualified reviewer for the next document or correction." };
+  return `<article class="diagnostic"><h5>${escapeHtml(item.title)}</h5><p>${escapeHtml(item.detail)}</p><p><strong>Next step:</strong> ${escapeHtml(item.next)}</p><code>${escapeHtml(reason)}</code></article>`;
 }
 
 function currentReadiness() {
@@ -277,6 +317,8 @@ async function loadHousehold(householdId, source) {
     state.profile = Object.fromEntries(payload.profile_fields.map((field) => [valueKey(field), field.value]));
     state.sources = payload.income_sources.map((sourceItem) => ({ ...sourceItem }));
     state.evidence = {};
+    state.focusedEvidenceKey = null;
+    state.baselineCalculation = currentCalculation();
     state.audit = [];
     $("#session-empty").hidden = true;
     $("#session-content").hidden = false;
@@ -308,10 +350,10 @@ function downloadPacket() {
     renter_note: $("#packet-note").value,
     delivery: "Downloaded by the renter. RealDoor did not send this packet to a property or provider.",
   };
-  const blob = new Blob([JSON.stringify(packet, null, 2)], { type: "application/json" });
+  const blob = new Blob([printablePacketDocument(packet)], { type: "text/html" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `realdoor-${state.payload.household_id.toLowerCase()}-readiness-packet.json`;
+  link.download = `realdoor-${state.payload.household_id.toLowerCase()}-readiness-packet.html`;
   link.style.display = "none";
   document.body.append(link);
   link.click();
@@ -319,6 +361,14 @@ function downloadPacket() {
   window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   addAudit("Downloaded renter-controlled readiness packet");
   announce("Readiness packet downloaded. It was not sent to any property or provider.");
+}
+
+function printablePacketDocument(packet) {
+  const profileRows = packet.confirmed_profile.map((item) => `<tr><th>${escapeHtml(item.field.replaceAll("_", " "))}</th><td>${escapeHtml(item.value)}</td><td>${escapeHtml(item.citation.document_id)} · p. ${item.citation.page} · box [${item.citation.bbox.join(", ")}]</td></tr>`).join("");
+  const sourceRows = packet.calculation.sources.map((source) => `<tr><td>${escapeHtml(source.label)}</td><td>${formatMoney(source.amount)} per ${escapeHtml(source.frequency)}</td><td>${formatMoney(source.annualized)}</td><td>${escapeHtml(source.citation.document_id)} · p. ${source.citation.page}</td></tr>`).join("");
+  const reasonRows = packet.readiness.reasons.length ? `<ul>${packet.readiness.reasons.map((reason) => `<li>${escapeHtml(reason.replaceAll("_", " "))}</li>`).join("")}</ul>` : "<p>No supplied review reason is present.</p>";
+  const citation = (item) => item ? `<p><strong>${escapeHtml(item.rule_id)}</strong> · effective ${escapeHtml(item.effective_date || "not date-specific")}<br>${escapeHtml(item.source_url)} · ${escapeHtml(item.source_locator)}</p>` : "";
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><title>${escapeHtml(packet.title)}</title><style>body{max-width:900px;margin:2rem auto;padding:0 1rem;color:#17243a;font:15px/1.5 system-ui,sans-serif}h1{margin-bottom:.2rem}h2{margin-top:2rem;border-bottom:2px solid #173a66;padding-bottom:.25rem}.boundary{padding:.8rem;border-left:4px solid #965c00;background:#fff5dc}table{width:100%;border-collapse:collapse}th,td{padding:.5rem;text-align:left;vertical-align:top;border-bottom:1px solid #dbe2ee}th{width:25%}.muted{color:#5d6a7d}.citation{padding:.7rem;background:#f5f8fc;border-left:3px solid #90b6d8}@media print{body{margin:0;max-width:none}.no-print{display:none}}</style><body><button class="no-print" onclick="window.print()">Print or save as PDF</button><h1>${escapeHtml(packet.title)}</h1><p class="muted">Synthetic fixture ${escapeHtml(packet.household_id)} · generated ${escapeHtml(new Date(packet.generated_at).toLocaleString())}</p><p class="boundary"><strong>Decision boundary:</strong> ${escapeHtml(packet.decision_boundary)}</p><h2>Confirmed profile evidence</h2><table><thead><tr><th>Field</th><th>Confirmed value</th><th>Source evidence</th></tr></thead><tbody>${profileRows}</tbody></table><h2>Deterministic income comparison</h2><p>${escapeHtml(packet.calculation.formula)}</p><table><thead><tr><th>Source</th><th>Confirmed input</th><th>Annualized</th><th>Evidence</th></tr></thead><tbody>${sourceRows}</tbody></table><p><strong>Annualized income:</strong> ${formatMoney(packet.calculation.annualizedIncome)}<br><strong>Frozen threshold:</strong> ${packet.calculation.threshold === null ? "Needs review" : formatMoney(packet.calculation.threshold)}<br><strong>Comparison:</strong> ${escapeHtml(packet.calculation.comparison)}</p><div class="citation">${citation(packet.calculation.calculation_citation)}${citation(packet.calculation.threshold_citation)}</div><h2>Readiness review</h2><p><strong>${escapeHtml(packet.readiness.status.replaceAll("_", " "))}</strong></p>${reasonRows}<div class="citation">${citation(packet.readiness.citation)}</div>${packet.renter_note.trim() ? `<h2>Renter note</h2><p>${escapeHtml(packet.renter_note)}</p>` : ""}<p class="muted">${escapeHtml(packet.delivery)}</p></body></html>`;
 }
 
 function deleteSession() {
