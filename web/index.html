@@ -12,7 +12,7 @@
     <header class="site-header">
       <div class="brand"><span class="brand-mark" aria-hidden="true">R</span><span>RealDoor</span></div>
       <p class="boundary">Application readiness, not eligibility</p>
-      <button class="text-button" id="delete-session" type="button">Delete session</button>
+      <div class="header-actions"><button class="text-button" id="open-demo-paths" type="button">Demo paths</button><button class="text-button" id="delete-session" type="button">Delete session</button></div>
     </header>
 
     <main id="main" tabindex="-1">
@@ -163,6 +163,8 @@
 
     <dialog id="consent-dialog" aria-labelledby="consent-title"><div class="dialog-content"><div class="dialog-heading"><h2 id="consent-title">Consent and data use</h2><button class="icon-button" data-close="consent-dialog" type="button" aria-label="Close">×</button></div><div id="consent-content"></div><button class="primary-button" data-close="consent-dialog" type="button">I understand</button></div></dialog>
     <dialog id="feature-dialog" aria-labelledby="feature-title"><div class="dialog-content"><div class="dialog-heading"><h2 id="feature-title">Feature register</h2><button class="icon-button" data-close="feature-dialog" type="button" aria-label="Close">×</button></div><div id="feature-content"></div><button class="primary-button" data-close="feature-dialog" type="button">Close</button></div></dialog>
+    <dialog id="source-drawer" class="source-drawer" aria-labelledby="source-drawer-title"><div class="dialog-content source-drawer-content"><div class="dialog-heading"><div><p class="eyebrow">Source evidence</p><h2 id="source-drawer-title">Document source</h2></div><button class="icon-button" data-close="source-drawer" type="button" aria-label="Close source evidence">×</button></div><div id="source-drawer-body"></div></div></dialog>
+    <dialog id="demo-paths-dialog" aria-labelledby="demo-paths-title"><div class="dialog-content"><div class="dialog-heading"><div><p class="eyebrow">Synthetic fixtures only</p><h2 id="demo-paths-title">Demo paths</h2></div><button class="icon-button" data-close="demo-paths-dialog" type="button" aria-label="Close demo paths">×</button></div><p class="help-text">Choose a focused acceptance-demo scenario. You must acknowledge the synthetic-data use summary before any fixture is loaded.</p><div class="demo-path-list"><button class="secondary-button" data-demo-household="HH-003" type="button"><strong>Happy path</strong><span>Recovered profile and income inputs</span></button><button class="secondary-button" data-demo-household="HH-005" type="button"><strong>Expired evidence</strong><span>Employment letter needs review</span></button><button class="secondary-button" data-demo-household="HH-002" type="button"><strong>Conflicting totals</strong><span>Pay-stub conflict is preserved</span></button><button class="secondary-button" data-demo-household="HH-001" type="button"><strong>Extraction abstention</strong><span>Raster-only evidence holds reuse for review</span></button><button class="secondary-button" data-demo-safety type="button"><strong>Safety proof</strong><span>Run refusal, injection, and disclosure checks</span></button></div></div></dialog>
     <div id="live-status" class="sr-only" aria-live="assertive"></div>
     <script src="app.js"></script>
   </body>

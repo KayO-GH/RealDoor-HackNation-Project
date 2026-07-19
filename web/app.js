@@ -10,6 +10,12 @@ const state = {
   lastImpact: [],
   propertyContext: null,
   localEvidence: null,
+  expandedDocuments: new Set(),
+  changedDocumentIds: new Set(),
+  highlightedEvidenceKey: null,
+  lastSourceTrigger: null,
+  baselineCalculation: null,
+  pendingDemoPath: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -170,38 +176,79 @@ function renderDocuments() {
   const untrustedCount = documents.filter((document) => document.contains_untrusted_content).length;
   $("#untrusted-summary").textContent = untrustedCount ? `${untrustedCount} supplied fixture(s) contained untrusted text. It was ignored and never shown as an instruction.` : "All displayed values are allowlisted fields only.";
   $("#document-list").innerHTML = documents.map((document) => `
-    <article class="document-card">
-      <div class="doc-meta"><span>${escapeHtml(document.document_type.replaceAll("_", " "))}</span><span>${escapeHtml(document.document_id)}</span></div>
-      <h4>${escapeHtml(document.file_name)}</h4>
-      <a class="evidence-link" href="${escapeHtml(servedPath(document.preview_url))}" target="_blank" rel="noreferrer">Open original synthetic PDF</a>
-      <p class="field-meta">${escapeHtml(document.extraction_engine ? `Parsed by ${document.extraction_engine.replaceAll("_", " ")}` : "Organizer evidence fixture")}</p>
-      ${sourceMapMarkup(document)}
+    <details class="evidence-accordion" data-document-id="${escapeHtml(document.document_id)}" ${state.expandedDocuments.has(document.document_id) ? "open" : ""}>
+      <summary><span class="document-summary-title"><span class="eyebrow">${escapeHtml(document.document_type.replaceAll("_", " "))}</span><strong>${escapeHtml(document.file_name)}</strong></span><span class="document-summary-metrics"><span>${document.fields.length} recovered fields</span><span>${document.page_count} page${document.page_count === 1 ? "" : "s"}</span><span class="status ${document.extraction_status === "abstained" ? "needs-review" : document.fields.every((field) => field.confidence === "high") ? "ready" : "pending"}">${document.extraction_status === "abstained" ? "abstained" : document.fields.every((field) => field.confidence === "high") ? "high confidence" : "review evidence"}</span></span></summary>
+      <article class="document-card">
+        <div class="document-card-heading"><div><h4>${escapeHtml(document.document_id)}</h4><p class="field-meta">${escapeHtml(document.extraction_engine ? `Parsed by ${document.extraction_engine.replaceAll("_", " ")}` : "Organizer evidence fixture")}</p></div><a class="evidence-link" href="${escapeHtml(servedPath(document.preview_url))}" target="_blank" rel="noreferrer">Open original synthetic PDF</a></div>
+        ${documentSourcePreviewMarkup(document)}
       ${document.contains_untrusted_content ? `<p class="untrusted">${escapeHtml(document.untrusted_content_handling)}</p>` : ""}
       ${document.extraction_status === "abstained" ? `<p class="abstention"><strong>Extraction abstained:</strong> ${escapeHtml(document.abstention_reason)}</p>` : ""}
       <table class="field-table"><thead><tr><th>Allowlisted field</th><th>Source evidence</th></tr></thead><tbody>${document.fields.map((field) => {
         const key = evidenceKey(document.document_id, field.field);
         const value = state.evidence[key] ?? field.value;
-        const confirmation = state.evidence[key] === undefined ? "pending" : "corrected";
+        const confirmation = state.confirmed ? "confirmed for this session" : state.evidence[key] === undefined ? "pending; renter confirmation required" : "corrected; renter confirmation required";
         const sourceDetails = field.page ? `p. ${field.page}<br>${field.bbox ? `box [${field.bbox.join(", ")}]<br>` : ""}` : "No precise source box recovered<br>";
-        return `<tr><td><label for="evidence-${escapeHtml(key)}"><strong>${escapeHtml(field.field.replaceAll("_", " "))}</strong></label><input id="evidence-${escapeHtml(key)}" data-evidence-document="${escapeHtml(document.document_id)}" data-evidence-field="${escapeHtml(field.field)}" value="${escapeHtml(value)}" aria-describedby="evidence-meta-${escapeHtml(key)}"><span id="evidence-meta-${escapeHtml(key)}" class="field-meta">${escapeHtml(field.purpose)} · ${escapeHtml(confirmation)}; renter confirmation required</span></td><td>${sourceDetails}<span class="status ${field.confidence === "high" ? "ready" : "pending"}">${escapeHtml(field.confidence)}</span></td></tr>`;
-      }).join("")}</tbody></table>
-    </article>`).join("");
+          return `<tr id="evidence-row-${escapeHtml(key)}" class="${state.highlightedEvidenceKey === key ? "evidence-highlighted" : ""}"><td><label for="evidence-${escapeHtml(key)}"><strong>${escapeHtml(field.field.replaceAll("_", " "))}</strong></label><input id="evidence-${escapeHtml(key)}" data-evidence-document="${escapeHtml(document.document_id)}" data-evidence-field="${escapeHtml(field.field)}" value="${escapeHtml(value)}" aria-describedby="evidence-meta-${escapeHtml(key)}"><span id="evidence-meta-${escapeHtml(key)}" class="field-meta">${escapeHtml(field.purpose)} · ${escapeHtml(confirmation)}</span></td><td>${sourceDetails}${field.bbox ? `<button class="source-locate" type="button" data-highlight-document="${escapeHtml(document.document_id)}" data-highlight-field="${escapeHtml(field.field)}">Highlight</button> <button class="source-locate" type="button" data-open-field-source="${escapeHtml(document.document_id)}" data-source-field="${escapeHtml(field.field)}">View</button><br>` : ""}<span class="status ${field.confidence === "high" ? "ready" : "pending"}">${escapeHtml(field.confidence)}</span></td></tr>`;
+      }).join("")}</tbody></table>${state.changedDocumentIds.has(document.document_id) ? `<div class="form-actions document-confirm-action"><button class="primary-button" type="button" data-confirm-document="${escapeHtml(document.document_id)}">Confirm changes</button><span class="field-meta">Confirms all current profile and evidence inputs.</span></div>` : ""}
+      </article>
+    </details>`).join("");
   $("#document-list").querySelectorAll("input[data-evidence-document]").forEach((input) => input.addEventListener("input", () => {
     applyEvidenceCorrection(input.dataset.evidenceDocument, input.dataset.evidenceField, input.value);
   }));
+  $("#document-list").querySelectorAll("details[data-document-id]").forEach((details) => details.addEventListener("toggle", () => {
+    if (details.open) state.expandedDocuments.add(details.dataset.documentId);
+    else state.expandedDocuments.delete(details.dataset.documentId);
+  }));
+  $("#document-list").querySelectorAll("[data-highlight-document]").forEach((button) => button.addEventListener("click", () => highlightEvidence(button.dataset.highlightDocument, button.dataset.highlightField)));
+  $("#document-list").querySelectorAll("[data-open-field-source]").forEach((button) => button.addEventListener("click", () => openSourceDrawer(button.dataset.openFieldSource, button.dataset.sourceField, button)));
+  $("#document-list").querySelectorAll("[data-source-marker]").forEach((button) => button.addEventListener("click", () => highlightEvidence(button.dataset.sourceDocument, button.dataset.sourceField)));
+  $("#document-list").querySelectorAll("[data-open-document-source]").forEach((button) => button.addEventListener("click", () => openSourceDrawer(button.dataset.openDocumentSource, null, button)));
+  $("#document-list").querySelectorAll("[data-confirm-document]").forEach((button) => button.addEventListener("click", confirmProfile));
 }
 
-function sourceMapMarkup(document) {
+function previewImageUrl(document) {
+  return servedPath(`/previews/${document.file_name.replace(/\.pdf$/i, ".png")}`);
+}
+
+function documentSourcePreviewMarkup(document) {
   const mappedFields = document.fields.filter((field) => Array.isArray(field.bbox) && field.page === 1);
   if (!mappedFields.length) return `<p class="help-text">No page-1 source boxes were recovered for this document.</p>`;
-  return `<figure class="source-map"><figcaption>Page 1 evidence-box map. Each outlined rectangle corresponds to an allowlisted field below.</figcaption><div class="source-page" role="img" aria-label="Page 1 source-box map for ${escapeHtml(document.document_id)}">${mappedFields.map((field) => {
+  return `<figure class="inline-rendered-source"><div class="inline-rendered-page"><img src="${escapeHtml(previewImageUrl(document))}" alt="Rendered page 1 of ${escapeHtml(document.file_name)}">${mappedFields.map((field) => {
     const [x1, y1, x2, y2] = field.bbox;
     const left = (x1 / 612) * 100;
     const top = ((792 - y2) / 792) * 100;
     const width = Math.max(((x2 - x1) / 612) * 100, 1.2);
     const height = Math.max(((y2 - y1) / 792) * 100, 1.2);
-    return `<span class="source-box" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;" title="${escapeHtml(field.field)} · page ${field.page} · box [${field.bbox.join(", ")}]"></span>`;
-  }).join("")}</div></figure>`;
+    const key = evidenceKey(document.document_id, field.field);
+    return `<button class="inline-source-marker ${state.highlightedEvidenceKey === key ? "inline-source-marker-active" : ""}" type="button" data-source-marker data-source-document="${escapeHtml(document.document_id)}" data-source-field="${escapeHtml(field.field)}" style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;" aria-label="Highlight ${escapeHtml(field.field.replaceAll("_", " "))} source"></button>`;
+  }).join("")}</div><figcaption>Purple markers identify recovered allowlisted values; they do not indicate a decision or recommendation.</figcaption><button class="text-button" type="button" data-open-document-source="${escapeHtml(document.document_id)}">Open larger source view</button></figure>`;
+}
+
+function highlightEvidence(documentId, fieldName) {
+  const key = evidenceKey(documentId, fieldName);
+  state.highlightedEvidenceKey = key;
+  state.expandedDocuments.add(documentId);
+  renderDocuments();
+  const input = document.getElementById(`evidence-${key}`);
+  input?.scrollIntoView({ behavior: "smooth", block: "center" });
+  input?.focus({ preventScroll: true });
+  announce(`Highlighted the recovered source for ${fieldName.replaceAll("_", " ")}.`);
+}
+
+function openSourceDrawer(documentId, fieldName, trigger) {
+  const sourceDocument = activeEvidenceDocuments().find((document) => document.document_id === documentId);
+  const sourceField = fieldName ? sourceDocument?.fields.find((field) => field.field === fieldName) : null;
+  if (!sourceDocument) return;
+  state.lastSourceTrigger = trigger;
+  $("#source-drawer-title").textContent = sourceField ? sourceField.field.replaceAll("_", " ") : "Source page";
+  const sourceMarker = sourceField?.bbox ? (() => {
+    const [x1, y1, x2, y2] = sourceField.bbox;
+    return `<span class="source-highlight" style="left:${(x1 / 612) * 100}%;top:${((792 - y2) / 792) * 100}%;width:${Math.max(((x2 - x1) / 612) * 100, 1.2)}%;height:${Math.max(((y2 - y1) / 792) * 100, 1.2)}%;" aria-hidden="true"></span>`;
+  })() : "";
+  $("#source-drawer-body").innerHTML = `<div class="source-drawer-meta"><strong>${escapeHtml(sourceDocument.file_name)}</strong><span>${sourceField ? `Page ${sourceField.page} · ${escapeHtml(sourceField.confidence)} confidence` : "Page 1 · recovered source boxes"}</span>${sourceField ? `<span>${escapeHtml(sourceField.purpose)}</span>` : ""}</div><figure class="rendered-source"><div class="rendered-page"><img src="${escapeHtml(previewImageUrl(sourceDocument))}" alt="Rendered page 1 of ${escapeHtml(sourceDocument.file_name)}">${sourceMarker}</div><figcaption>${sourceField ? "The amber highlight marks the recovered source value. It is not an inference or decision signal." : "Use the inline source page to highlight an individual recovered value."}</figcaption></figure><div class="form-actions"><a class="secondary-button" href="${escapeHtml(servedPath(sourceDocument.preview_url))}" target="_blank" rel="noreferrer">Open original synthetic PDF</a>${sourceField?.bbox ? `<span class="field-meta">source box [${sourceField.bbox.join(", ")}]</span>` : ""}</div>`;
+  $("#source-drawer").showModal();
+  $("#source-drawer [data-close]").focus();
+  announce(sourceField ? `Opened recovered source evidence for ${sourceField.field.replaceAll("_", " ")}.` : "Opened rendered source evidence.");
 }
 
 function renderExtractionBenchmark() {
@@ -224,6 +271,7 @@ function fieldValueFromEvidence(documentId, field) {
 }
 
 function applyEvidenceCorrection(documentId, field, value) {
+  state.changedDocumentIds.add(documentId);
   state.evidence[evidenceKey(documentId, field)] = value;
   const profileField = state.payload.profile_fields.find((item) => item.document_id === documentId && item.field === field);
   if (profileField) state.profile[valueKey(profileField)] = value;
@@ -244,6 +292,17 @@ function applyEvidenceCorrection(documentId, field, value) {
   markUnconfirmed("An extracted value changed. Confirm it before reuse.", impactForField(field));
 }
 
+function calculationReplayMarkup(calculation) {
+  const baseline = state.baselineCalculation;
+  if (!baseline) return "";
+  const incomeDelta = calculation.annualizedIncome - baseline.annualizedIncome;
+  const thresholdDelta = (calculation.threshold ?? 0) - (baseline.threshold ?? 0);
+  if (incomeDelta === 0 && thresholdDelta === 0) return `<div class="calculation-replay"><strong>Replay check:</strong> confirmed inputs still match the loaded fixture.</div>`;
+  const incomeDirection = incomeDelta > 0 ? "increased" : incomeDelta < 0 ? "decreased" : "did not change";
+  const thresholdText = thresholdDelta === 0 ? "" : `<p>The household-size threshold ${thresholdDelta > 0 ? "increased" : "decreased"} by <strong>${formatMoney(Math.abs(thresholdDelta))}</strong>.</p>`;
+  return `<div class="calculation-replay"><h4>Change replay</h4><p>Annualized income ${incomeDirection} by <strong>${formatMoney(Math.abs(incomeDelta))}</strong> from the loaded fixture.</p>${thresholdText}<p class="field-meta">ProofChain remains the authoritative status. Reconfirm before this replay is reused in the packet.</p></div>`;
+}
+
 function renderCalculation() {
   const calculation = currentCalculation();
   if (!state.confirmed) {
@@ -256,7 +315,7 @@ function renderCalculation() {
   $("#calculation-content").hidden = false;
   $("#download-packet").disabled = false;
   const comparisonText = calculation.comparison === "below_or_equal" ? "At or below frozen threshold" : calculation.comparison === "above" ? "Above frozen threshold" : "No frozen threshold available";
-  $("#calculation-summary").innerHTML = `<p>${escapeHtml(state.payload.calculation.formula)}</p><div class="calculation-result"><div class="stat"><span>Confirmed annualized income</span><strong>${formatMoney(calculation.annualizedIncome)}</strong></div><div class="stat"><span>60% threshold · household ${calculation.householdSize}</span><strong>${calculation.threshold === null ? "Needs review" : formatMoney(calculation.threshold)}</strong></div><div class="stat"><span>Comparison</span><strong>${escapeHtml(comparisonText)}</strong></div></div><div class="citation"><p><strong>Calculation convention</strong></p>${citationMarkup(state.payload.calculation.calculation_citation)}</div>${calculation.threshold ? `<div class="citation"><p><strong>Threshold citation</strong></p>${citationMarkup(state.payload.calculation.threshold_citation)}</div>` : ""}`;
+  $("#calculation-summary").innerHTML = `<p>${escapeHtml(state.payload.calculation.formula)}</p><div class="calculation-result"><div class="stat"><span>Confirmed annualized income</span><strong>${formatMoney(calculation.annualizedIncome)}</strong></div><div class="stat"><span>60% threshold · household ${calculation.householdSize}</span><strong>${calculation.threshold === null ? "Needs review" : formatMoney(calculation.threshold)}</strong></div><div class="stat"><span>Comparison</span><strong>${escapeHtml(comparisonText)}</strong></div></div>${calculationReplayMarkup(calculation)}<div class="citation"><p><strong>Calculation convention</strong></p>${citationMarkup(state.payload.calculation.calculation_citation)}</div>${calculation.threshold ? `<div class="citation"><p><strong>Threshold citation</strong></p>${citationMarkup(state.payload.calculation.threshold_citation)}</div>` : ""}`;
   $("#income-source-list").innerHTML = calculation.sources.map((source, index) => {
     const recoveryClass = source.evidence_state === "recovered" ? "ready" : "needs-review";
     const recoveredInputs = source.evidence_citations?.length ? `<details class="proof-citations"><summary>${source.evidence_citations.length} parsed calculation input${source.evidence_citations.length === 1 ? "" : "s"}</summary>${source.evidence_citations.map((citation) => `<div class="citation">${fieldCitationMarkup(citation)}</div>`).join("")}</details>` : "";
@@ -283,11 +342,24 @@ function renderRules() {
   $("#rule-citations").innerHTML = state.payload.rules.map((rule) => `<div class="citation">${citationMarkup(rule)}</div>`).join("");
 }
 
+function readinessDiagnostic(reason) {
+  const diagnostics = {
+    EMPLOYMENT_LETTER_EXPIRED: { title: "Employment letter is outside the challenge's 60-day convention", detail: "The supplied employment letter date is more than 60 days before the frozen simulation date.", next: "Keep the original evidence and ask a qualified reviewer which current employer record they need." },
+    PAY_STUB_TOTAL_CONFLICT: { title: "Pay-stub totals do not reconcile", detail: "Displayed gross pay differs from regular hours multiplied by hourly rate.", next: "Recheck the recovered source values; preserve the conflict if it is not a transcription error." },
+    GIG_INCOME_UNCORROBORATED: { title: "Gig income needs corroboration", detail: "The supplied statement needs a qualified reviewer to examine supporting evidence.", next: "Keep the statement in the packet and ask which corroborating record is appropriate." },
+    PROFILE_EVIDENCE_NOT_RECOVERED: { title: "Profile evidence was not recovered", detail: "A required profile field lacks readable local evidence.", next: "Hold reuse for OCR or qualified human review; do not substitute a fixture value as recovered evidence." },
+    SOURCE_EVIDENCE_NOT_RECOVERED: { title: "Calculation-source evidence was not recovered", detail: "A recurring income input lacks readable local evidence.", next: "Keep the evidence gap visible and do not confirm the calculation or packet." },
+    NO_FROZEN_THRESHOLD: { title: "No frozen threshold is available", detail: "The household size is outside the supplied 2026 threshold table.", next: "Do not estimate a threshold; ask a qualified reviewer for the applicable published limit." },
+  };
+  const item = diagnostics[reason] || { title: reason.replaceAll("_", " "), detail: "This supplied checklist condition requires review.", next: "Preserve the evidence gap for qualified human review rather than guessing." };
+  return `<article class="diagnostic"><h5>${escapeHtml(item.title)}</h5><p>${escapeHtml(item.detail)}</p><p><strong>Next step:</strong> ${escapeHtml(item.next)}</p><code>${escapeHtml(reason)}</code></article>`;
+}
+
 function renderReadiness() {
   const readiness = currentReadiness();
   const reasons = readiness.reasons;
   const status = readiness.status;
-  const reasonMarkup = reasons.length ? `<ul class="reason-list">${reasons.map((reason) => `<li><strong>${escapeHtml(reason)}</strong></li>`).join("")}</ul>` : "<p>No review reason is present in the supplied gold checklist.</p>";
+  const reasonMarkup = reasons.length ? `<div class="diagnostic-list">${reasons.map((reason) => readinessDiagnostic(reason)).join("")}</div>` : "<p class=\"ready-message\"><strong>No supplied review gap is present.</strong> The packet is ready for a qualified human to review; it is not an eligibility result.</p>";
   const missingMarkup = readiness.missing_document_types.length ? `<p><strong>Document context:</strong> ${escapeHtml(readiness.missing_document_types.join(", "))} is not present in this supplied fixture. Follow the frozen checklist and reviewer guidance.</p>` : "";
   $("#readiness-content").innerHTML = `<div class="readiness-summary"><span class="status ${statusClass(status)}">${escapeHtml(status.replaceAll("_", " "))}</span><span>This is readiness only, never an eligibility determination.</span></div><h4>Review reasons</h4>${reasonMarkup}${missingMarkup}<div class="citation">${citationMarkup(readiness.citation)}</div>`;
 }
@@ -573,6 +645,10 @@ async function loadHousehold(householdId, source, uploadedEvidence = null) {
     state.evidence = {};
     state.audit = [];
     state.lastImpact = [];
+    state.expandedDocuments = new Set();
+    state.changedDocumentIds = new Set();
+    state.highlightedEvidenceKey = null;
+    state.baselineCalculation = currentCalculation();
     $("#session-empty").hidden = true;
     $("#session-content").hidden = false;
     $("#fixture-select").value = householdId;
@@ -641,6 +717,11 @@ function deleteSession() {
   state.audit = [];
   state.lastImpact = [];
   state.localEvidence = null;
+  state.expandedDocuments = new Set();
+  state.changedDocumentIds = new Set();
+  state.highlightedEvidenceKey = null;
+  state.baselineCalculation = null;
+  state.pendingDemoPath = null;
   state.consentAcknowledged = false;
   $("#session-content").hidden = true;
   $("#session-empty").hidden = false;
@@ -710,6 +791,19 @@ function showFeatures() {
   $("#feature-dialog").showModal();
 }
 
+async function startDemoPath(path) {
+  if (!state.consentAcknowledged) {
+    state.pendingDemoPath = path;
+    $("#demo-paths-dialog").close();
+    showConsent();
+    announce("Review the data-use summary, then acknowledge it to load this demo path.");
+    return;
+  }
+  $("#demo-paths-dialog").close();
+  await loadHousehold(path.householdId, "demo paths");
+  if (path.runSafetyProof && state.payload?.household_id === path.householdId) await runSafetyProof();
+}
+
 async function init() {
   const [consent, households, propertyContext] = await Promise.all([getJson(apiPath("api/consent")), getJson(apiPath("api/households")), getJson(apiPath("api/properties"))]);
   state.consent = consent;
@@ -723,6 +817,11 @@ async function init() {
     $("#file-input").disabled = !event.target.checked;
     $("#upload-status").textContent = event.target.checked ? "Consent recorded for this browser session. You can now choose supplied synthetic PDFs or a demo household." : "Acknowledge the local data-use summary to begin. Exact supplied synthetic PDFs are parsed only in local memory.";
     announce(event.target.checked ? "Consent recorded for this browser session." : "Consent acknowledgement removed.");
+    if (event.target.checked && state.pendingDemoPath) {
+      const pendingPath = state.pendingDemoPath;
+      state.pendingDemoPath = null;
+      void startDemoPath(pendingPath);
+    }
   });
   $("#fixture-select").addEventListener("change", (event) => event.target.value && loadHousehold(event.target.value, "demo fixture selector"));
   $("#file-input").addEventListener("change", async (event) => {
@@ -756,6 +855,9 @@ async function init() {
   $("#question-form").addEventListener("submit", askQuestion);
   $("#open-consent").addEventListener("click", showConsent);
   $("#open-features").addEventListener("click", showFeatures);
+  $("#open-demo-paths").addEventListener("click", () => $("#demo-paths-dialog").showModal());
+  document.querySelectorAll("[data-demo-household]").forEach((button) => button.addEventListener("click", () => void startDemoPath({ householdId: button.dataset.demoHousehold, runSafetyProof: false })));
+  document.querySelectorAll("[data-demo-safety]").forEach((button) => button.addEventListener("click", () => void startDemoPath({ householdId: "HH-003", runSafetyProof: true })));
   $("#run-safety-proof").addEventListener("click", runSafetyProof);
   $("#discover-city").addEventListener("change", renderDiscover);
   $("#discover-bedroom").addEventListener("change", renderDiscover);
@@ -766,6 +868,10 @@ async function init() {
     announce("The complete unranked public project set is shown.");
   });
   document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => $(`#${button.dataset.close}`).close()));
+  $("#source-drawer").addEventListener("close", () => {
+    state.lastSourceTrigger?.focus();
+    state.lastSourceTrigger = null;
+  });
 }
 
 init().catch((error) => {

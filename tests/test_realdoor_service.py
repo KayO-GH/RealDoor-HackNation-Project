@@ -65,10 +65,21 @@ class RealDoorServiceTests(unittest.TestCase):
         raster_pay_stub = by_document["HH-001-D02"]
         self.assertEqual(raster_pay_stub["extraction_status"], "abstained")
         self.assertFalse(raster_pay_stub["fields"])
+        self.assertTrue(all(not document["fields"] for document in evidence["documents"] if document["extraction_status"] == "abstained"))
         benchmark = evidence["benchmark"]
         self.assertEqual(benchmark["allowlisted_fields"]["exact_matches"], 104)
         self.assertEqual(benchmark["allowlisted_fields"]["extracted"], 104)
         self.assertEqual(benchmark["documents"]["abstained_raster_only"], 8)
+
+    def test_rendered_previews_cover_every_supplied_fixture(self):
+        documents = sorted((ROOT / "synthetic_documents/documents").glob("*.pdf"))
+        previews = ROOT / "web/previews"
+        self.assertTrue(previews.is_dir())
+        self.assertEqual(
+            {path.stem for path in previews.glob("*.png")},
+            {path.stem for path in documents},
+        )
+        self.assertTrue(all(path.stat().st_size > 0 for path in previews.glob("*.png")))
 
     def test_local_pdf_extraction_detects_untrusted_text_from_document_content(self):
         evidence = self.service.local_evidence_payload("HH-002")
@@ -261,6 +272,7 @@ class VercelAdapterTests(unittest.TestCase):
             ("/api?path=api/households", b"HH-001"),
             ("/api?path=api/households/HH-003/local-evidence", b"local_pdf_text_v1"),
             ("/api?path=documents/hh-003_d01_application_summary.pdf", b"%PDF"),
+            ("/api?path=previews/hh-003_d01_application_summary.png", b"\x89PNG"),
         )
         for path, expected in cases:
             with self.subTest(path=path):
