@@ -2,7 +2,7 @@
 
 ## Architecture
 
-RealDoor is a local prototype served from `app.py` on `127.0.0.1`. Its Python service reads only organizer-supplied synthetic fixtures, frozen rules, checklists, and the 2026 MTSP table. PyMuPDF runs locally to extract selectable text and page geometry from the supplied PDFs. When a fixture has no selectable text, the local app renders its pages in memory and invokes the installed Tesseract binary with English TSV output; no OCR image or text file is written. The browser interface owns the transient session state: confirmation state, renter corrections, optional packet note, action log, and packet export.
+RealDoor is a synthetic-only prototype. Its Python service remains authoritative for selectable PDF text and page geometry. In the hosted Vercel flow, only raster-abstained documents enter the browser fallback: PDF.js renders 300 DPI grayscale pages and one self-hosted Tesseract.js WebAssembly worker runs English PSM 6 OCR. The worker is terminated after the batch; canvases, object URLs, OCR text, and fields are not persisted. The browser interface owns transient session state: confirmation state, renter corrections, optional packet note, action log, and packet export.
 
 The extraction adapter is deliberately narrow. It parses only typed allowlisted fields after known labels in the supplied synthetic document formats; the organizer gold labels are retained as a regression oracle, not as the runtime extraction source. OCR candidates require a recognized known label, strict label/value geometry, valid typed value, and at least 90% confidence on every used OCR token. Raster-only PDFs without a qualifying candidate, local Tesseract, or English data return an explicit abstention. The app does not claim general OCR accuracy, and it blocks confirmation if a material calculation input was not recovered from native text or strict local OCR evidence. Every public field is allowlisted; embedded instruction text is excluded and reported only as ignored untrusted content.
 
@@ -13,7 +13,7 @@ ProofChain is a deterministic traceability layer over that same contract. It sho
 ## Data and retention boundary
 
 - The demo accepts supplied synthetic documents only. A browser upload must be a byte-for-byte SHA-256 match to a locally installed organizer fixture; arbitrary and real-renter documents are rejected.
-- Fixture-selector documents are read from the local repository. Accepted browser-upload bytes travel only to the loopback server, are parsed in process memory, and are discarded after the JSON evidence response. They are not written, logged, or sent to a provider.
+- Fixture-selector documents are read from the local repository. Browser uploads are SHA-256 checked locally against the fixture manifest; hosted PDF bytes are rendered and OCR'd in the active browser only. The legacy local-evidence endpoint remains available for compatibility but is not called by the hosted UI.
 - No database, analytics, hosted model, or persistent session storage is used.
 - The action log stores event type, timestamp, and frozen rule version—not raw document text or values.
 - Session deletion clears browser-held profile, packet, selected files, and audit state. The app does not send packets to a provider.

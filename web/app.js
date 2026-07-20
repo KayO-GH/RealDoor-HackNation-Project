@@ -16,6 +16,9 @@ const state = {
   lastSourceTrigger: null,
   baselineCalculation: null,
   pendingDemoPath: null,
+  extractionSchema: null,
+  fixtureManifest: [],
+  ocrPending: 0,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -29,6 +32,7 @@ const apiPath = (path) => {
   return isLocalRuntime ? `/${normalized}` : `/api?path=${encodeURIComponent(normalized)}`;
 };
 const servedPath = (path) => isLocalRuntime ? path : apiPath(path);
+const browserOcr = import("./browser-ocr.js");
 
 function announce(message) {
   $("#live-status").textContent = message;
@@ -81,11 +85,43 @@ function localEvidenceField(documentId, field) {
   return document?.fields.find((item) => item.field === field) || null;
 }
 
+function browserEvidenceDocument(document, selectedNames = null) {
+  if (selectedNames && !selectedNames.has(document.file_name)) return null;
+  if (document.rasterized) {
+    return { ...document, extraction_engine: "browser_tesseract_ocr_v1", extraction_status: "abstained", extraction_summary: "No selectable text was found. Recovering in this browser…", abstention_reason: "No selectable text was found; browser OCR recovery is pending.", extraction_method: "ocr", fields: [] };
+  }
+  return { ...document, extraction_engine: "local_pdf_text_v1", extraction_status: "extracted", extraction_summary: `Recovered ${document.fields.length} allowlisted fields from selectable PDF text.`, abstention_reason: null, fields: document.fields.map((field) => ({ ...field, document_id: document.document_id, extraction_method: "native_text", confirmation_state: "pending" })) };
+}
+
+function refreshDerivedState() {
+  state.profile = Object.fromEntries(state.payload.profile_fields.map((field) => [valueKey(field), localEvidenceField(field.document_id, field.field)?.value ?? ""]));
+  state.sources = state.payload.income_sources.map((sourceItem) => hydrateCalculationSource(sourceItem));
+  renderAll();
+}
+
+async function recoverBrowserDocument(document, bytes) {
+  const schema = state.extractionSchema;
+  const labels = schema.field_labels[document.document_type] || [];
+  try {
+    const result = await (await browserOcr).recoverDocument(bytes, { document, labels, allowlisted_fields: schema.allowlisted_fields, purposes: Object.fromEntries(labels.map((item) => [item.field, item.field.replaceAll("_", " ")])) }, (message) => announce(`${document.document_id}: ${message}`));
+    const index = state.localEvidence.documents.findIndex((item) => item.document_id === document.document_id);
+    if (index >= 0) state.localEvidence.documents[index] = result;
+  } catch (error) {
+    const index = state.localEvidence.documents.findIndex((item) => item.document_id === document.document_id);
+    if (index >= 0) state.localEvidence.documents[index] = { ...state.localEvidence.documents[index], extraction_status: "abstained", extraction_summary: `Browser OCR could not recover candidate evidence: ${error.message || "unknown failure"} Preserve this abstention for qualified human review.`, abstention_reason: error.message || "Browser OCR failed.", fields: [] };
+  } finally {
+    state.ocrPending -= 1;
+    refreshDerivedState();
+    announce(state.ocrPending ? `${state.ocrPending} browser OCR recovery job${state.ocrPending === 1 ? "" : "s"} still running.` : "Browser OCR recovery settled. Review and confirm candidate evidence before reuse.");
+  }
+}
+
 function localDocumentStatus(documentId) {
   return state.localEvidence?.documents.find((item) => item.document_id === documentId)?.extraction_status || null;
 }
 
 function extractionEngineLabel(document) {
+  if (document.extraction_engine === "browser_tesseract_ocr_v1") return "Browser Tesseract OCR";
   return document.extraction_engine === "local_tesseract_ocr_v1" ? "Local Tesseract OCR" : "Local PDF text extraction";
 }
 
@@ -641,6 +677,10 @@ function markUnconfirmed(message, impact = ["Frozen-rule comparison", "Readiness
 
 function confirmProfile() {
   if (!state.payload) return;
+  if (state.ocrPending) {
+    announce("Browser OCR recovery is still running. Confirmation remains disabled until all recovery jobs settle.");
+    return;
+  }
   const householdSize = currentHouseholdSize();
   if (!Number.isInteger(householdSize) || householdSize < 1) {
     $("#profile-state").className = "status needs-review";
@@ -682,21 +722,20 @@ function confirmProfile() {
   announce("Profile confirmed. The deterministic calculation and packet controls are available.");
 }
 
-async function loadHousehold(householdId, source, uploadedEvidence = null) {
+async function loadHousehold(householdId, source, selectedFiles = null) {
   if (!state.consentAcknowledged) {
     announce("Acknowledge the synthetic-data use summary before loading a fixture.");
     return;
   }
   try {
-    const [payload, localEvidence] = await Promise.all([
-      getJson(apiPath(`api/households/${encodeURIComponent(householdId)}`)),
-      uploadedEvidence ? Promise.resolve(uploadedEvidence) : getJson(apiPath(`api/households/${encodeURIComponent(householdId)}/local-evidence`)),
-    ]);
+    const payload = await getJson(apiPath(`api/households/${encodeURIComponent(householdId)}`));
+    const selectedNames = selectedFiles ? new Set(selectedFiles.map((file) => file.name)) : null;
+    const localEvidence = { household_id: householdId, documents: payload.documents.map((document) => browserEvidenceDocument(document, selectedNames)).filter(Boolean), benchmark: null, boundary: "Native text is extracted by the authoritative parser. Rasterized supplied fixtures are recovered only in this browser with self-hosted PDF.js and Tesseract.js assets; OCR candidates are ephemeral and confirmation-required." };
     state.payload = payload;
     state.localEvidence = localEvidence;
+    state.ocrPending = 0;
     state.confirmed = false;
-    state.profile = Object.fromEntries(payload.profile_fields.map((field) => [valueKey(field), localEvidenceField(field.document_id, field.field)?.value ?? ""]));
-    state.sources = payload.income_sources.map((sourceItem) => hydrateCalculationSource(sourceItem));
+    refreshDerivedState();
     state.evidence = {};
     state.focusedEvidenceKey = null;
     state.baselineCalculation = currentCalculation();
@@ -709,10 +748,18 @@ async function loadHousehold(householdId, source, uploadedEvidence = null) {
     $("#session-empty").hidden = true;
     $("#session-content").hidden = false;
     $("#fixture-select").value = householdId;
-    renderAll();
     addAudit("Renter acknowledged synthetic-data use and session deletion");
     addAudit(`Loaded ${householdId} from ${source}`);
-    announce(`${householdId} loaded. Local evidence extraction is ready for review before confirmation.`);
+    const rasterDocuments = localEvidence.documents.filter((document) => document.extraction_status === "abstained");
+    const fileBytes = new Map();
+    if (selectedFiles) for (const file of selectedFiles) fileBytes.set(file.name, await file.arrayBuffer());
+    state.ocrPending = rasterDocuments.length;
+    renderAll();
+    for (const document of rasterDocuments) {
+      const bytes = fileBytes.get(document.file_name) || await (await fetch(servedPath(`/documents/${encodeURIComponent(document.file_name)}`), { cache: "no-store" })).arrayBuffer();
+      void recoverBrowserDocument(document, bytes);
+    }
+    announce(rasterDocuments.length ? `${rasterDocuments.length} raster document${rasterDocuments.length === 1 ? "" : "s"} queued: recovering in this browser.` : `${householdId} loaded. Native evidence is ready for review before confirmation.`);
   } catch (error) {
     $("#upload-status").textContent = error.message;
     announce(error.message);
@@ -782,6 +829,7 @@ function deleteSession() {
   state.audit = [];
   state.lastImpact = [];
   state.localEvidence = null;
+  state.ocrPending = 0;
   state.expandedDocuments = new Set();
   state.changedDocumentIds = new Set();
   state.highlightedEvidenceKey = null;
@@ -870,9 +918,11 @@ async function startDemoPath(path) {
 }
 
 async function init() {
-  const [consent, households, propertyContext] = await Promise.all([getJson(apiPath("api/consent")), getJson(apiPath("api/households")), getJson(apiPath("api/properties"))]);
+  const [consent, households, propertyContext, extractionSchema, fixtureManifest] = await Promise.all([getJson(apiPath("api/consent")), getJson(apiPath("api/households")), getJson(apiPath("api/properties")), getJson(apiPath("api/extraction-schema")), getJson(apiPath("api/fixture-manifest"))]);
   state.consent = consent;
   state.propertyContext = propertyContext;
+  state.extractionSchema = extractionSchema;
+  state.fixtureManifest = fixtureManifest;
   populateDiscoverCities();
   renderDiscover();
   $("#fixture-select").insertAdjacentHTML("beforeend", households.map((household) => `<option value="${household.household_id}">${household.household_id} · ${escapeHtml(household.scenario.replaceAll("_", " "))}</option>`).join(""));
@@ -898,15 +948,16 @@ async function init() {
     }
     const householdId = `HH-${matches[0][1]}`;
     try {
-      $("#upload-status").textContent = `${files.length} synthetic PDF(s) selected. Parsing exact supplied bytes in local memory...`;
-      const uploadedEvidence = await postJson(apiPath("api/local-evidence"), { files: await Promise.all(files.map(async (file) => {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        let binary = "";
-        for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-        return { file_name: file.name, content_base64: btoa(binary) };
-      })) });
-      await loadHousehold(householdId, "locally parsed supplied PDF", uploadedEvidence);
-      $("#upload-status").textContent = `${files.length} exact supplied synthetic PDF(s) were parsed in local memory and discarded after evidence extraction.`;
+      const manifestByName = new Map(state.fixtureManifest.map((item) => [item.file_name, item]));
+      const checkedFiles = [];
+      for (const file of files) {
+        const bytes = await file.arrayBuffer();
+        const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((value) => value.toString(16).padStart(2, "0")).join("");
+        if (manifestByName.get(file.name)?.sha256 !== digest || manifestByName.get(file.name)?.household_id !== householdId) throw new Error("Choose exact organizer-supplied synthetic PDFs from one household. The PDF bytes were not sent anywhere.");
+        checkedFiles.push(file);
+      }
+      $("#upload-status").textContent = `${files.length} exact synthetic PDF(s) verified locally by SHA-256. Recovering raster documents in this browser…`;
+      await loadHousehold(householdId, "SHA-256 checked supplied PDFs", checkedFiles);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to parse the selected synthetic PDFs.";
       $("#upload-status").textContent = message;

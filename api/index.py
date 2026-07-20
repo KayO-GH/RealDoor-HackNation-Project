@@ -105,6 +105,10 @@ def handler():
         return _json(SERVICE.property_context())
     if path == "api/consent":
         return _json(SERVICE.consent_payload())
+    if path == "api/extraction-schema":
+        return _json(SERVICE.extraction_schema_payload())
+    if path == "api/fixture-manifest":
+        return _json(SERVICE.fixture_manifest_payload())
     if path.startswith("api/households/"):
         if path.endswith("/local-evidence"):
             household_id = path.removesuffix("/local-evidence").rsplit("/", 1)[-1].upper()

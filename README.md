@@ -2,51 +2,46 @@
 
 Dedicated repo for Challenge 3: a renter-side application-readiness copilot for the Boston-Cambridge-Quincy HMFA simulation.
 
-## Start Here
-1. Read `AGENTS.md`.
-2. Read `PLAN.md`.
-3. Check `PROGRESS.md` for the current implementation state and verification gates.
-4. Read `participant-guide/RealDoor_Starter_Pack_Guide.pdf`.
-5. Read `rules/RULES_README.md`.
-6. Read `governance/DATA_USE_AND_SAFETY.md`.
-
 ## Run the Prototype
 
-The prototype runs entirely on `127.0.0.1`. It uses PyMuPDF locally to read selectable text and source geometry from the organizer-supplied synthetic PDFs. For a raster-only fixture it can fall back to the locally installed Tesseract binary (`eng` data required), still returning only strict allowlisted, renter-confirmable candidates; it has no hosted-model or network dependency in the scored journey.
+Live demo: [realdoor-judge-demo.vercel.app](https://realdoor-judge-demo.vercel.app/)
+
+The app uses PyMuPDF for authoritative selectable-text extraction. Raster-only fixtures are recovered in the browser with pinned, self-hosted PDF.js and Tesseract.js assets. Browser OCR is candidate-only, ephemeral, and confirmation-required; PDF bytes are not posted to an OCR service.
 
 ```bash
 python3 -m pip install -e .
-# macOS: brew install tesseract
-# Linux: install your distribution's tesseract-ocr package with English data
 python3 app.py
 ```
 
-Open `http://127.0.0.1:8000`. To use a different local port:
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000). To use another port:
 
 ```bash
 REALDOOR_PORT=8001 python3 app.py
 ```
 
-The app requires a renter acknowledgement before loading a supplied synthetic fixture. The demo selector parses the organizer PDFs already present in the local repository. The upload path accepts only byte-for-byte matches to those supplied synthetic PDFs, parses them in local server memory, and discards the bytes after the response; it rejects arbitrary and real-renter files. Without local Tesseract or English language data, raster-only PDFs explicitly abstain rather than producing guessed fields or confidence.
+The app requires a renter acknowledgement before loading a supplied synthetic fixture. The demo selector loads matching fixture metadata; the browser renders raster pages at 300 DPI and runs one English Tesseract worker with PSM 6, then terminates it and clears page resources. The upload path SHA-256 checks selected bytes against `/api/fixture-manifest`, rejects arbitrary and real-renter files, and never posts the PDF to `/api/local-evidence` in the hosted flow. Unsupported browser OCR explicitly abstains rather than producing guessed fields or confidence.
 
-Use **HH-003** for the happy path: its profile and calculation inputs have readable local evidence. Use HH-005 for expired evidence, HH-002 for a preserved pay-stub conflict, and HH-001 to demonstrate strict local OCR recovery followed by renter confirmation.
+Use **HH-003** for the native-text happy path. Use HH-001 to demonstrate browser OCR recovery followed by renter confirmation; HH-005 shows expired evidence and HH-002 preserves a pay-stub conflict.
 
 ## Hosted Demo Boundary
 
-The Vercel adapter is a hosted **synthetic-only** demo. It accepts only exact supplied fixture bytes and never accepts real-renter files. It intentionally abstains from raster OCR when its runtime lacks the local Tesseract binary and English data; the local `app.py` flow remains the offline scored path.
+The Vercel adapter is a hosted **synthetic-only** demo. It exposes read-only `/api/extraction-schema` and `/api/fixture-manifest` metadata endpoints; `/api/local-evidence` remains only for backward compatibility. The browser OCR fallback accepts only exact fixture hashes and never accepts real-renter files.
 
 ## Verify Before a Demo or Commit
 
 ```bash
+node --test tests/browser_ocr.test.mjs
+node --check web/app.js
+node --check web/browser-ocr.js
 python3 -m unittest discover -s starter/tests -v
 python3 -m unittest discover -s tests -v
-python3 scripts/evaluate.py
 ```
+
+The Python OCR regression tests use the local Tesseract executable; the browser demo does not. Install it only when running those tests (`brew install tesseract` on macOS, or the equivalent `tesseract-ocr` package on Linux).
 
 The project regression suite checks organizer checklist calculations, all supplied Q&A answers/citations, the submission contract, allowlisted native/OCR extraction fields, source boxes, the fixture-only benchmark and abstention behavior, adversarial safety boundaries, and ProofChain's cited review actions. Rehearse the user-facing sequence in `DEMO_PLAN.md`.
 
 ## What Is In This Repo
-- Challenge plan and working norms.
 - Starter pack docs, rules, governance, and evaluation assets.
 - Synthetic documents and gold labels.
 - Starter code, schemas, and tests.
@@ -64,4 +59,4 @@ The project regression suite checks organizer checklist calculations, all suppli
 
 ## Current Implementation Status
 
-The local end-to-end implementation includes editable field-level evidence/confirmation with actual PDF source-box maps, a disclosed fixture benchmark, strict local OCR fallback with explicit abstention, a calculation-input recovery gate, ProofChain's cited evidence-to-packet path, cited frozen-rule math, readiness reasons that update after corrections, a printable renter-controlled case file, deletion, live safety checks, keyboard-accessible controls, and an optional public HUD LIHTC context view with explicit renter-selected filters and unknown availability. See `PROGRESS.md` for the current verification status before changing or demoing the app.
+The implementation includes native PDF extraction, browser-side OCR fallback, SHA-256 fixture validation, editable field-level evidence/confirmation with source-box maps, explicit abstention, calculation-input gates, ProofChain traceability, cited frozen-rule math, readiness review, a printable renter-controlled case file, deletion, safety checks, and optional public HUD LIHTC context. See `PROGRESS.md` for verification status.
