@@ -44,6 +44,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 return self._json({"error": "Unknown synthetic household."}, HTTPStatus.NOT_FOUND)
         if parsed.path == "/api/consent":
             return self._json(SERVICE.consent_payload())
+        if parsed.path == "/api/extraction-schema":
+            return self._json(SERVICE.extraction_schema_payload())
+        if parsed.path == "/api/fixture-manifest":
+            return self._json(SERVICE.fixture_manifest_payload())
         if parsed.path.startswith("/documents/"):
             return self._file(DOCUMENT_ROOT, parsed.path.removeprefix("/documents/"))
         if parsed.path.startswith("/rules/"):
