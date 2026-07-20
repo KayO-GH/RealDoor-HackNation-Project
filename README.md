@@ -12,7 +12,7 @@ Dedicated repo for Challenge 3: a renter-side application-readiness copilot for 
 
 ## Run the Prototype
 
-The prototype runs entirely on `127.0.0.1`. It uses PyMuPDF locally to read selectable text and source geometry from the organizer-supplied synthetic PDFs. For a raster-only fixture it can fall back to the locally installed Tesseract binary (`eng` data required), still returning only strict allowlisted, renter-confirmable candidates; it has no hosted-model or network dependency in the scored journey.
+The prototype uses PyMuPDF locally to read selectable text and source geometry from organizer-supplied synthetic PDFs. The hosted Vercel demo keeps that native parser authoritative and recovers raster-only fixtures in the renter's browser with pinned, self-hosted PDF.js and Tesseract.js assets. Browser OCR is candidate-only, ephemeral, confirmation-required, and never posts PDF bytes to an OCR service.
 
 ```bash
 python3 -m pip install -e .
@@ -27,13 +27,13 @@ Open `http://127.0.0.1:8000`. To use a different local port:
 REALDOOR_PORT=8001 python3 app.py
 ```
 
-The app requires a renter acknowledgement before loading a supplied synthetic fixture. The demo selector parses the organizer PDFs already present in the local repository. The upload path accepts only byte-for-byte matches to those supplied synthetic PDFs, parses them in local server memory, and discards the bytes after the response; it rejects arbitrary and real-renter files. Without local Tesseract or English language data, raster-only PDFs explicitly abstain rather than producing guessed fields or confidence.
+The app requires a renter acknowledgement before loading a supplied synthetic fixture. The demo selector loads matching fixture metadata; the browser renders raster pages at 300 DPI and runs one English Tesseract worker with PSM 6, then terminates it and clears page resources. The upload path SHA-256 checks selected bytes against `/api/fixture-manifest`, rejects arbitrary and real-renter files, and never posts the PDF to `/api/local-evidence` in the hosted flow. Unsupported browser OCR explicitly abstains rather than producing guessed fields or confidence.
 
 Use **HH-003** for the happy path: its profile and calculation inputs have readable local evidence. Use HH-005 for expired evidence, HH-002 for a preserved pay-stub conflict, and HH-001 to demonstrate strict local OCR recovery followed by renter confirmation.
 
 ## Hosted Demo Boundary
 
-The Vercel adapter is a hosted **synthetic-only** demo. It accepts only exact supplied fixture bytes and never accepts real-renter files. It intentionally abstains from raster OCR when its runtime lacks the local Tesseract binary and English data; the local `app.py` flow remains the offline scored path.
+The Vercel adapter is a hosted **synthetic-only** demo. It exposes read-only `/api/extraction-schema` and `/api/fixture-manifest` metadata endpoints; `/api/local-evidence` remains only for backward compatibility. The browser OCR fallback accepts only exact fixture hashes and never accepts real-renter files.
 
 ## Verify Before a Demo or Commit
 

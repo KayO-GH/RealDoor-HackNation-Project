@@ -17,7 +17,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from realdoor.extraction import LocalPdfEvidenceExtractor
+from realdoor.extraction import ALLOWLISTED_FIELDS, FIELD_LABELS, OCR_DPI, OCR_MIN_CONFIDENCE, UNTRUSTED_MARKERS, LocalPdfEvidenceExtractor
 
 
 EVENT_DATE = date(2026, 7, 18)
@@ -28,27 +28,6 @@ FREQUENCY_MULTIPLIERS = {
     "semimonthly": 24,
     "monthly": 12,
     "annual": 1,
-}
-ALLOWLISTED_FIELDS = {
-    "person_name",
-    "household_size",
-    "address",
-    "application_date",
-    "pay_date",
-    "pay_period_start",
-    "pay_period_end",
-    "pay_frequency",
-    "regular_hours",
-    "hourly_rate",
-    "gross_pay",
-    "net_pay",
-    "document_date",
-    "weekly_hours",
-    "monthly_benefit",
-    "benefit_frequency",
-    "statement_month",
-    "gross_receipts",
-    "platform_fees",
 }
 FIELD_PURPOSES = {
     "person_name": "Identify the household record during this local session.",
@@ -210,6 +189,30 @@ class RealDoorService:
             "benchmark": self.evidence_benchmark(),
             "boundary": "Local PDF extraction produces candidate evidence only. The renter confirms values; frozen rules and deterministic math remain separate from the extraction engine.",
         }
+
+    def extraction_schema_payload(self) -> dict[str, Any]:
+        return {
+            "allowlisted_fields": sorted(ALLOWLISTED_FIELDS),
+            "field_labels": {
+                document_type: [{"field": field, "label": label, "kind": kind} for field, label, kind in labels]
+                for document_type, labels in FIELD_LABELS.items()
+            },
+            "untrusted_markers": list(UNTRUSTED_MARKERS),
+            "ocr": {"dpi": OCR_DPI, "psm": 6, "minimum_token_confidence": OCR_MIN_CONFIDENCE},
+            "engine": "browser_tesseract_ocr_v1",
+        }
+
+    def fixture_manifest_payload(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "document_id": document["document_id"],
+                "household_id": document["household_id"],
+                "document_type": document["document_type"],
+                "file_name": document["file_name"],
+                "sha256": hashlib.sha256((self.root / "synthetic_documents/documents" / document["file_name"]).read_bytes()).hexdigest(),
+            }
+            for document in self._documents
+        ]
 
     def uploaded_local_evidence_payload(self, uploads: list[dict[str, Any]]) -> dict[str, Any]:
         """Parse browser-supplied copies of known synthetic PDFs without storing them.
@@ -450,6 +453,7 @@ class RealDoorService:
             "page_count": document["page_count"],
             "preview_url": f"/documents/{document['file_name']}",
             "contains_untrusted_content": bool(document.get("contains_adversarial_text")),
+            "rasterized": bool(document.get("rasterized")),
             "untrusted_content_handling": "Ignored: untrusted text is not extracted, displayed, or used as an instruction.",
             "fields": fields,
         }
