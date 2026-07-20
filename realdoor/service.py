@@ -2,8 +2,8 @@
 
 Frozen organizer labels remain the regression oracle for the scored rule and
 checklist journey. The visible evidence path separately parses supplied
-synthetic PDFs in memory, abstaining when a raster-only file has no readable
-text layer. Neither path makes an eligibility decision.
+synthetic PDFs in memory, using strict local OCR only when a raster-only file
+has no readable text layer. Neither path makes an eligibility decision.
 """
 
 from __future__ import annotations
@@ -250,14 +250,18 @@ class RealDoorService:
         This fixture benchmark is deliberately disclosed as an evaluation aid,
         not a production accuracy claim or an applicant score.
         """
-        expected = extracted = matches = text_documents = abstained_documents = 0
-        high_total = high_matches = 0
+        expected = extracted = matches = native_documents = ocr_documents = partial_documents = abstained_documents = 0
+        high_total = high_matches = ocr_total = ocr_matches = native_total = native_matches = 0
         for document in self._documents:
             parsed = self._local_document(document)
             if parsed["extraction_status"] == "abstained":
                 abstained_documents += 1
+            elif parsed["extraction_status"] == "partial":
+                partial_documents += 1
+            if parsed["extraction_engine"] == "local_tesseract_ocr_v1":
+                ocr_documents += 1
             else:
-                text_documents += 1
+                native_documents += 1
             gold = {field["field"]: field["value"] for field in document["fields"] if field["field"] in ALLOWLISTED_FIELDS}
             observed = {field["field"]: field for field in parsed["fields"]}
             expected += len(gold)
@@ -270,16 +274,45 @@ class RealDoorService:
                 if observed_field["confidence"] == "high":
                     high_total += 1
                     high_matches += int(correct)
+                if observed_field.get("extraction_method") == "ocr":
+                    ocr_total += 1
+                    ocr_matches += int(correct)
+                else:
+                    native_total += 1
+                    native_matches += int(correct)
         parsed_accuracy = round((matches / extracted) * 100, 1) if extracted else 0.0
         coverage = round((extracted / expected) * 100, 1) if expected else 0.0
         return {
             "title": "Local extraction fixture benchmark",
-            "engine": "local_pdf_text_v1",
+            "engine": "local_pdf_text_and_tesseract_ocr_v1",
             "scope": "Organizer-provided synthetic PDFs only. This is not a real-renter accuracy claim.",
-            "documents": {"total": len(self._documents), "with_readable_text": text_documents, "abstained_raster_only": abstained_documents},
+            "documents": {
+                "total": len(self._documents),
+                "native_text": native_documents,
+                "ocr_attempted": ocr_documents,
+                "partial": partial_documents,
+                "abstained": abstained_documents,
+            },
             "allowlisted_fields": {"expected": expected, "extracted": extracted, "exact_matches": matches, "coverage_percent": coverage, "exact_match_percent_when_extracted": parsed_accuracy},
-            "confidence": {"high_fields": high_total, "high_field_exact_match_percent": round((high_matches / high_total) * 100, 1) if high_total else 0.0},
-            "abstention_policy": "If a supplied PDF has no readable text layer or a label/value pair is absent, the parser returns no candidate field and asks for OCR or qualified human review. It never guesses.",
+            "native_text": {
+                "documents": native_documents,
+                "extracted": native_total,
+                "exact_matches": native_matches,
+                "exact_match_percent_when_extracted": round((native_matches / native_total) * 100, 1) if native_total else 0.0,
+            },
+            "ocr": {
+                "documents": ocr_documents,
+                "extracted": ocr_total,
+                "exact_matches": ocr_matches,
+                "exact_match_percent_when_extracted": round((ocr_matches / ocr_total) * 100, 1) if ocr_total else 0.0,
+            },
+            "confidence": {
+                "high_fields": high_total,
+                "high_field_exact_match_percent": round((high_matches / high_total) * 100, 1) if high_total else 0.0,
+                "ocr_candidate_fields": ocr_total,
+                "ocr_candidate_exact_match_percent": round((ocr_matches / ocr_total) * 100, 1) if ocr_total else 0.0,
+            },
+            "abstention_policy": "Selectable PDF text is preferred. Raster-only fixtures use local Tesseract OCR only when every label/value token clears the 90% confidence gate; otherwise the parser returns no candidate and asks for qualified human review. It never guesses.",
         }
 
     def submission_payload(self, household_id: str) -> dict[str, Any]:
