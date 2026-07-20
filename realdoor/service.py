@@ -1,20 +1,23 @@
-"""Deterministic data and safety services for the RealDoor prototype.
+"""Deterministic data, safety, and local evidence services for RealDoor.
 
-This module intentionally uses the organizer-provided synthetic gold labels for
-the supplied fixture documents. It is a demo extraction adapter, not a general
-OCR or eligibility engine. Raw PDF contents are never read or logged by the
-application server.
+Frozen organizer labels remain the regression oracle for the scored rule and
+checklist journey. The visible evidence path separately parses supplied
+synthetic PDFs in memory, using strict local OCR only when a raster-only file
+has no readable text layer. Neither path makes an eligibility decision.
 """
 
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
+
+from realdoor.extraction import LocalPdfEvidenceExtractor
 
 
 EVENT_DATE = date(2026, 7, 18)
@@ -74,6 +77,20 @@ EXCLUSIONS = [
     "Behavioral, device, credit, or landlord-revenue signals",
     "Eligibility, approval, denial, priority, ranking, or acceptance prediction",
 ]
+REVIEW_ACTIONS = {
+    "PAY_STUB_TOTAL_CONFLICT": {
+        "title": "Reconcile the pay-stub discrepancy",
+        "detail": "Review the documented gross pay against regular hours multiplied by the hourly rate. Preserve both source values for a qualified human rather than silently choosing one.",
+    },
+    "EMPLOYMENT_LETTER_EXPIRED": {
+        "title": "Refresh the employment letter",
+        "detail": "The supplied letter is older than the challenge's 60-day evidence convention. Request current employer evidence or ask a qualified human what corroboration is acceptable.",
+    },
+    "GIG_INCOME_UNCORROBORATED": {
+        "title": "Corroborate the gig-income record",
+        "detail": "Keep the documented gig statement visible and ask a qualified human which additional evidence can corroborate it. RealDoor does not infer undocumented income.",
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -98,6 +115,8 @@ class RealDoorService:
         self._qa = self._load_jsonl("evaluation/qa_gold.jsonl")
         self._checklists = self._load_checklists()
         self._thresholds = self._load_thresholds()
+        self._properties = self._load_properties()
+        self._pdf_extractor = LocalPdfEvidenceExtractor()
         self._documents_by_household: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for document in self._documents:
             self._documents_by_household[document["household_id"]].append(document)
@@ -114,6 +133,16 @@ class RealDoorService:
         with (self.root / "data/mtsp_2026_boston_cambridge_quincy.csv").open(encoding="utf-8") as file:
             return {int(row["household_size"]): row for row in csv.DictReader(file)}
 
+    def _load_properties(self) -> list[dict[str, Any]]:
+        fields = (
+            "hud_id", "project_name", "project_address", "project_city", "project_state", "project_zip",
+            "total_units", "low_income_units", "studio_units", "one_bedroom_units", "two_bedroom_units",
+            "three_bedroom_units", "four_bedroom_units", "latitude", "longitude", "geocode_precision_code",
+            "data_quality_flags", "source_url", "retrieved_utc",
+        )
+        with (self.root / "data/lihtc_boston_metro_subset.csv").open(encoding="utf-8") as file:
+            return [{field: row[field] or None for field in fields} for row in csv.DictReader(file)]
+
     def household_summaries(self) -> list[dict[str, Any]]:
         summaries = []
         for household_id in sorted(self._documents_by_household):
@@ -127,6 +156,23 @@ class RealDoorService:
                 "expected_readiness_status": checklist["expected_readiness_status"],
             })
         return summaries
+
+    def property_context(self) -> dict[str, Any]:
+        """Return public project context without availability or recommendation claims."""
+        return {
+            "title": "Public LIHTC project context",
+            "boundary": "This HUD subset reports project locations and historical unit counts. It does not establish current vacancies, rents, waitlists, ownership procedures, or application status.",
+            "availability": "unknown",
+            "retrieval": self._properties[0]["retrieved_utc"] if self._properties else None,
+            "source": {
+                "rule_id": "HUD-DATA-001",
+                "authority": "official_hud",
+                "effective_date": None,
+                "source_url": "https://www.huduser.gov/portal/datasets/lihtc/property.html",
+                "source_locator": "Organizer-provided Boston-Cambridge-Quincy HMFA subset",
+            },
+            "properties": self._properties,
+        }
 
     def household_payload(self, household_id: str) -> dict[str, Any]:
         if household_id not in self._documents_by_household:
@@ -143,8 +189,130 @@ class RealDoorService:
             "income_sources": [self._source_payload(source) for source in sources],
             "calculation": calculation,
             "readiness": self._readiness_payload(checklist),
+            "proof_chain": self._proof_chain(household_id, checklist, documents, calculation),
             "rules": self._relevant_rules(),
             "consent": self.consent_payload(),
+        }
+
+    def local_evidence_payload(self, household_id: str) -> dict[str, Any]:
+        """Parse the supplied fixture PDFs in memory for the visible evidence path.
+
+        This does not alter the frozen deterministic calculation contract. It is
+        intentionally separated so a parser disagreement or abstention becomes
+        a visible renter-review event rather than a silent data overwrite.
+        """
+        if household_id not in self._documents_by_household:
+            raise KeyError(household_id)
+        documents = [self._local_document(document) for document in self._documents_by_household[household_id]]
+        return {
+            "household_id": household_id,
+            "documents": documents,
+            "benchmark": self.evidence_benchmark(),
+            "boundary": "Local PDF extraction produces candidate evidence only. The renter confirms values; frozen rules and deterministic math remain separate from the extraction engine.",
+        }
+
+    def uploaded_local_evidence_payload(self, uploads: list[dict[str, Any]]) -> dict[str, Any]:
+        """Parse browser-supplied copies of known synthetic PDFs without storing them.
+
+        Exact SHA-256 matching rejects arbitrary or real-renter files. The only
+        accepted bytes are the organizer-provided synthetic fixtures already in
+        this local repository.
+        """
+        expected_by_name = {document["file_name"]: document for document in self._documents}
+        households: set[str] = set()
+        parsed_documents = []
+        seen_names: set[str] = set()
+        for upload in uploads:
+            name = upload["file_name"]
+            pdf_bytes = upload["bytes"]
+            document = expected_by_name.get(name)
+            if not document or name in seen_names:
+                raise ValueError("Only one copy of a supplied synthetic fixture may be parsed.")
+            expected_bytes = (self.root / "synthetic_documents" / "documents" / name).read_bytes()
+            if hashlib.sha256(pdf_bytes).digest() != hashlib.sha256(expected_bytes).digest():
+                raise ValueError("The selected file is not an exact supplied synthetic fixture.")
+            seen_names.add(name)
+            households.add(document["household_id"])
+            parsed_documents.append(self._local_document_from_bytes(pdf_bytes, document))
+        if not parsed_documents or len(households) != 1:
+            raise ValueError("Choose one or more supplied synthetic PDFs for a single household.")
+        household_id = next(iter(households))
+        return {
+            "household_id": household_id,
+            "documents": parsed_documents,
+            "benchmark": self.evidence_benchmark(),
+            "boundary": "The selected synthetic PDF bytes were parsed in local memory, matched to the organizer fixture set, and discarded after this response. The renter must confirm every candidate value.",
+        }
+
+    def evidence_benchmark(self) -> dict[str, Any]:
+        """Measure parser coverage and exactness against the supplied gold labels.
+
+        This fixture benchmark is deliberately disclosed as an evaluation aid,
+        not a production accuracy claim or an applicant score.
+        """
+        expected = extracted = matches = native_documents = ocr_documents = partial_documents = abstained_documents = 0
+        high_total = high_matches = ocr_total = ocr_matches = native_total = native_matches = 0
+        for document in self._documents:
+            parsed = self._local_document(document)
+            if parsed["extraction_status"] == "abstained":
+                abstained_documents += 1
+            elif parsed["extraction_status"] == "partial":
+                partial_documents += 1
+            if parsed["extraction_engine"] == "local_tesseract_ocr_v1":
+                ocr_documents += 1
+            else:
+                native_documents += 1
+            gold = {field["field"]: field["value"] for field in document["fields"] if field["field"] in ALLOWLISTED_FIELDS}
+            observed = {field["field"]: field for field in parsed["fields"]}
+            expected += len(gold)
+            extracted += len(observed)
+            for field, observed_field in observed.items():
+                if field not in gold:
+                    continue
+                correct = observed_field["value"] == gold[field]
+                matches += int(correct)
+                if observed_field["confidence"] == "high":
+                    high_total += 1
+                    high_matches += int(correct)
+                if observed_field.get("extraction_method") == "ocr":
+                    ocr_total += 1
+                    ocr_matches += int(correct)
+                else:
+                    native_total += 1
+                    native_matches += int(correct)
+        parsed_accuracy = round((matches / extracted) * 100, 1) if extracted else 0.0
+        coverage = round((extracted / expected) * 100, 1) if expected else 0.0
+        return {
+            "title": "Local extraction fixture benchmark",
+            "engine": "local_pdf_text_and_tesseract_ocr_v1",
+            "scope": "Organizer-provided synthetic PDFs only. This is not a real-renter accuracy claim.",
+            "documents": {
+                "total": len(self._documents),
+                "native_text": native_documents,
+                "ocr_attempted": ocr_documents,
+                "partial": partial_documents,
+                "abstained": abstained_documents,
+            },
+            "allowlisted_fields": {"expected": expected, "extracted": extracted, "exact_matches": matches, "coverage_percent": coverage, "exact_match_percent_when_extracted": parsed_accuracy},
+            "native_text": {
+                "documents": native_documents,
+                "extracted": native_total,
+                "exact_matches": native_matches,
+                "exact_match_percent_when_extracted": round((native_matches / native_total) * 100, 1) if native_total else 0.0,
+            },
+            "ocr": {
+                "documents": ocr_documents,
+                "extracted": ocr_total,
+                "exact_matches": ocr_matches,
+                "exact_match_percent_when_extracted": round((ocr_matches / ocr_total) * 100, 1) if ocr_total else 0.0,
+            },
+            "confidence": {
+                "high_fields": high_total,
+                "high_field_exact_match_percent": round((high_matches / high_total) * 100, 1) if high_total else 0.0,
+                "ocr_candidate_fields": ocr_total,
+                "ocr_candidate_exact_match_percent": round((ocr_matches / ocr_total) * 100, 1) if ocr_total else 0.0,
+            },
+            "abstention_policy": "Selectable PDF text is preferred. Raster-only fixtures use local Tesseract OCR only when every label/value token clears the 90% confidence gate; otherwise the parser returns no candidate and asks for qualified human review. It never guesses.",
         }
 
     def submission_payload(self, household_id: str) -> dict[str, Any]:
@@ -165,13 +333,13 @@ class RealDoorService:
 
     def consent_payload(self) -> dict[str, Any]:
         return {
-            "summary": "Synthetic files stay in this browser session. The local server uses fixture metadata only and does not store raw document contents.",
+            "summary": "Synthetic files are read only in local memory to recover allowlisted text and source boxes. The local server does not store raw document contents or send them to a provider.",
             "allowlisted_fields": [
                 {"field": field, "purpose": FIELD_PURPOSES[field]}
                 for field in sorted(FIELD_PURPOSES)
             ],
             "exclusions": EXCLUSIONS,
-            "retention": "Session data lives in browser memory. Deleting the session clears the profile and packet. Action events record event type and rule version, never raw document text.",
+            "retention": "Raw synthetic PDFs are parsed only in local memory and are never written by RealDoor. Session data lives in browser memory. Deleting the session clears the profile and packet. Action events record event type and rule version, never raw document text.",
         }
 
     def safety_answer(self, question: str, active_household: str | None) -> dict[str, Any]:
@@ -223,14 +391,14 @@ class RealDoorService:
                 "An unsigned self-declaration is not treated as employer evidence. Preserve it as a review gap and ask a qualified human which corroborating document is needed.",
                 ["CH-READINESS-001", "CH-DECISION-001"],
             )
-        if active_household and "annualized income" in lowered:
+        if active_household and ("annualized income" in lowered or ("income" in lowered and any(word in lowered for word in ("annual", "yearly", "per year", "scorer")))):
             calculation = self.household_payload(active_household)["calculation"]
             return {
                 "kind": "rule_answer",
                 "answer": f"${calculation['annualized_income']:,.2f} under the frozen annualization convention.",
                 "citations": [calculation["calculation_citation"], *[source["citation"] for source in calculation["sources"]]],
             }
-        if active_household and ("compare" in lowered or "comparison" in lowered):
+        if active_household and ("compare" in lowered or "comparison" in lowered or any(word in lowered for word in ("above", "below", "under", "over"))):
             calculation = self.household_payload(active_household)["calculation"]
             return {
                 "kind": "rule_answer",
@@ -244,7 +412,7 @@ class RealDoorService:
                 "answer": payload["readiness"]["status"],
                 "citations": [payload["readiness"]["citation"]],
             }
-        if active_household and ("threshold" in lowered or "60%" in lowered or "ami" in lowered):
+        if active_household and ("threshold" in lowered or "60%" in lowered or "ami" in lowered or any(word in lowered for word in ("ceiling", "limit", "maximum"))):
             payload = self.household_payload(active_household)
             calculation = payload["calculation"]
             return {
@@ -356,6 +524,114 @@ class RealDoorService:
             "missing_document_types": checklist["missing_document_types"],
             "current_document_convention": f"Documents are current when dated no more than {CURRENT_DOCUMENT_DAYS} days before {EVENT_DATE.isoformat()} for this challenge simulation.",
             "citation": self._rule_citation(self._rule("CH-READINESS-001")),
+        }
+
+    def _local_document(self, document: dict[str, Any]) -> dict[str, Any]:
+        parsed = self._pdf_extractor.extract_path(self.root / "synthetic_documents" / "documents" / document["file_name"], document)
+        return self._enrich_local_document(parsed)
+
+    def _local_document_from_bytes(self, pdf_bytes: bytes, document: dict[str, Any]) -> dict[str, Any]:
+        parsed = self._pdf_extractor.extract_bytes(pdf_bytes, document)
+        return self._enrich_local_document(parsed)
+
+    @staticmethod
+    def _enrich_local_document(parsed: dict[str, Any]) -> dict[str, Any]:
+        for field in parsed["fields"]:
+            field["document_id"] = parsed["document_id"]
+            field["purpose"] = FIELD_PURPOSES[field["field"]]
+        return parsed
+
+    def _proof_chain(
+        self,
+        household_id: str,
+        checklist: dict[str, Any],
+        documents: list[dict[str, Any]],
+        calculation: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Expose the non-decisioning evidence path behind a readiness packet.
+
+        This is deliberately a traceability layer, not an eligibility engine. The
+        browser recomputes the same dependencies after a renter correction and
+        requires confirmation before any affected result can be reused.
+        """
+        reasons = checklist["expected_review_reasons"]
+        source_citations = [source["citation"] for source in calculation["sources"]]
+        source_citations.extend(
+            self._field_citation(self._document_by_type(household_id, "application_summary"), field)
+            for field in ("household_size", "application_date")
+        )
+        contains_untrusted = [document["document_id"] for document in documents if document["contains_untrusted_content"]]
+        checks = [
+            {
+                "check_id": "source_provenance",
+                "state": "verified",
+                "title": "Every material value has source evidence",
+                "detail": f"{len(source_citations)} cited field references feed the confirmed profile, annualization, or frozen threshold.",
+                "citations": source_citations,
+            },
+            {
+                "check_id": "document_freshness",
+                "state": "review" if "EMPLOYMENT_LETTER_EXPIRED" in reasons else "verified",
+                "title": "Document freshness is checked against the challenge convention",
+                "detail": "An employment letter is outside the 60-day challenge convention." if "EMPLOYMENT_LETTER_EXPIRED" in reasons else f"No supplied employment letter is outside the {CURRENT_DOCUMENT_DAYS}-day challenge convention.",
+                "citations": [self._rule_citation(self._rule("CH-READINESS-001"))],
+            },
+            {
+                "check_id": "income_consistency",
+                "state": "review" if "PAY_STUB_TOTAL_CONFLICT" in reasons else "verified",
+                "title": "Income evidence is reconciled without silent overrides",
+                "detail": "Documented gross pay conflicts with regular hours multiplied by hourly rate." if "PAY_STUB_TOTAL_CONFLICT" in reasons else "No supplied pay-stub total conflict requires review.",
+                "citations": source_citations,
+            },
+            {
+                "check_id": "frozen_rule_scope",
+                "state": "verified",
+                "title": "One frozen 2026 rule set drives the comparison",
+                "detail": f"Household size {calculation['household_size']} uses the supplied FY 2026 60% threshold and its effective date.",
+                "citations": [calculation["calculation_citation"], calculation["threshold_citation"]],
+            },
+            {
+                "check_id": "untrusted_input",
+                "state": "protected" if contains_untrusted else "verified",
+                "title": "Untrusted instructions cannot alter the case",
+                "detail": f"Ignored untrusted content in {', '.join(contains_untrusted)}; it cannot change rules, tools, or the readiness packet." if contains_untrusted else "Only allowlisted evidence is used; document instructions cannot alter rules, tools, or the packet.",
+                "citations": [self._rule_citation(self._rule("CH-SAFETY-001"))],
+            },
+        ]
+        actions = [
+            {
+                "action_id": "confirm_profile",
+                "state": "confirmation_required",
+                "title": "Confirm the renter-controlled profile",
+                "detail": "Every editable extracted value must be confirmed or corrected before it can feed the calculation or packet.",
+                "citations": source_citations,
+            },
+            *[
+                {
+                    "action_id": reason.lower(),
+                    "state": "review",
+                    "reason_code": reason,
+                    **REVIEW_ACTIONS.get(reason, {
+                        "title": "Resolve a documented review gap",
+                        "detail": "Preserve the evidence gap for qualified human review; do not replace it with a guess.",
+                    }),
+                    "citations": [self._rule_citation(self._rule("CH-READINESS-001"))],
+                }
+                for reason in reasons
+            ],
+        ]
+        return {
+            "title": "ProofChain",
+            "summary": "A renter-controlled evidence path from cited documents to a readiness packet. It records uncertainty and never makes an eligibility decision.",
+            "boundary": "ProofChain validates evidence provenance, consistency, freshness, and frozen-rule scope. A qualified human makes any program decision.",
+            "stages": [
+                {"stage_id": "evidence", "title": "Cited evidence", "detail": "Allowlisted document fields remain linked to their source boxes."},
+                {"stage_id": "confirmation", "title": "Renter confirmation", "detail": "Corrections invalidate dependent results until reconfirmed."},
+                {"stage_id": "calculation", "title": "Frozen-rule calculation", "detail": "Confirmed recurring sources are annualized against one dated threshold."},
+                {"stage_id": "packet", "title": "Renter-controlled packet", "detail": "A clear readiness packet can be previewed, edited, downloaded, or deleted."},
+            ],
+            "checks": checks,
+            "next_actions": actions,
         }
 
     def _relevant_rules(self) -> list[dict[str, Any]]:

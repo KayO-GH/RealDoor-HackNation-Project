@@ -12,7 +12,7 @@
     <header class="site-header">
       <div class="brand"><span class="brand-mark" aria-hidden="true">R</span><span>RealDoor</span></div>
       <p class="boundary">Application readiness, not eligibility</p>
-      <button class="text-button" id="delete-session" type="button">Delete session</button>
+      <div class="header-actions"><button class="icon-button tooltip-button" id="open-demo-paths" type="button" aria-label="Open demo paths" data-tooltip="Demo paths"><span aria-hidden="true">⌘</span></button><button class="text-button" id="delete-session" type="button">Reset session</button></div>
     </header>
 
     <main id="main" tabindex="-1">
@@ -22,7 +22,7 @@
         <p>RealDoor extracts only allowlisted fields from supplied synthetic fixtures. You confirm every value before it is reused. A qualified human makes any program decision.</p>
         <div class="hero-actions">
           <button class="secondary-button" id="open-consent" type="button">How data is used</button>
-          <button class="secondary-button" id="open-features" type="button">Feature register</button>
+          <button class="icon-button tooltip-button hero-icon-button" id="open-features" type="button" aria-label="Open feature register" data-tooltip="Feature register"><span aria-hidden="true">☷</span></button>
         </div>
       </section>
 
@@ -40,7 +40,7 @@
         <div>
           <p class="eyebrow">Synthetic fixtures only</p>
           <h2 id="start-title">Start a local session</h2>
-          <p>Choose a supplied household for the demo, or select its local PDFs. File contents are never uploaded; only known supplied fixture filenames are matched in this browser.</p>
+          <p>Choose a supplied household for the demo, or select its local PDFs. Exact supplied synthetic PDFs are parsed only in local memory for allowlisted evidence and source boxes; they are never stored or sent to a provider.</p>
         </div>
         <div class="controls">
           <label class="consent-check" for="consent-check"><input id="consent-check" type="checkbox"> I understand the synthetic-data use and session-deletion controls.</label>
@@ -70,20 +70,28 @@
             </div>
             <aside class="panel evidence-summary" aria-labelledby="evidence-title">
               <h3 id="evidence-title">Evidence policy</h3>
-              <ul>
-                <li><strong>High:</strong> native supplied fixture with a source box.</li>
-                <li><strong>Medium:</strong> rasterized supplied fixture with a source box.</li>
-                <li>Confidence describes evidence quality only. It never scores a renter.</li>
-                <li>Every value still requires renter confirmation.</li>
-              </ul>
+              <p>Evidence quality only—never a renter score.</p>
+              <details class="evidence-policy-details"><summary>What confidence means</summary><ul><li><strong>High:</strong> native supplied fixture with a source box.</li><li><strong>Medium:</strong> rasterized supplied fixture with a source box.</li><li>Every value still requires renter confirmation.</li></ul></details>
             </aside>
           </div>
+          <section class="extraction-benchmark" aria-labelledby="benchmark-title">
+            <div><p class="eyebrow">Evidence engine</p><h3 id="benchmark-title">Extraction proof, not a black box</h3></div>
+            <div id="extraction-benchmark-content" aria-live="polite"></div>
+          </section>
           <div class="documents-heading"><h3>Document evidence</h3><p id="untrusted-summary" class="help-text"></p></div>
           <div id="document-list" class="document-list"></div>
         </section>
 
         <section id="understand" class="stage muted-stage" aria-labelledby="understand-title">
-          <div class="stage-heading"><p class="eyebrow">02 · Understand</p><h2 id="understand-title">Use one frozen rule set and deterministic math</h2></div>
+          <div class="stage-heading"><p class="eyebrow">02 · Understand</p><h2 id="understand-title">Trace every result through one frozen rule set</h2></div>
+          <section class="proof-chain panel" aria-labelledby="proof-chain-title">
+            <div class="proof-chain-heading"><div><p class="eyebrow">Evidence traceability</p><h3 id="proof-chain-title">ProofChain</h3></div><span id="proof-chain-state" class="status pending" role="status">Confirmation required</span></div>
+            <p id="proof-chain-summary" class="help-text"></p>
+            <div id="proof-flow" class="proof-flow" aria-label="Evidence path to the renter-controlled packet"></div>
+            <div id="proof-impact" class="proof-impact" aria-live="polite"></div>
+            <div class="proof-chain-grid"><section aria-labelledby="proof-checks-title"><h4 id="proof-checks-title">Live proof checks</h4><div id="proof-checks" class="proof-checks"></div></section><section aria-labelledby="proof-actions-title"><h4 id="proof-actions-title">Next evidence actions</h4><div id="proof-actions" class="proof-actions"></div></section></div>
+            <p id="proof-chain-boundary" class="boundary-inline"></p>
+          </section>
           <div id="calculation-gate" class="notice warning" role="status">Confirm the profile to calculate from it.</div>
           <div id="calculation-content" class="stage-layout" hidden>
             <div class="panel">
@@ -98,13 +106,17 @@
             </aside>
           </div>
           <div class="panel question-panel">
-            <h3>Ask about the local rules</h3>
+            <h3>Cited frozen-rule lookup</h3>
             <form id="question-form">
-              <label for="question">Question</label>
+              <label for="question">Ask a rule or safety question</label>
               <div class="question-row"><input id="question" name="question" placeholder="What is the frozen 60% threshold?" autocomplete="off"><button class="secondary-button" type="submit">Ask</button></div>
             </form>
             <div id="answer" class="answer" aria-live="polite">Answers will include source citations or a safety boundary.</div>
           </div>
+          <section class="safety-proof" aria-labelledby="safety-proof-title">
+            <div><p class="eyebrow">Live controls</p><h3 id="safety-proof-title">Run the safety proof</h3><p class="help-text">Test refusal of a decision request, prompt injection, and cross-household disclosure against the active local session.</p></div>
+            <div><button class="secondary-button" id="run-safety-proof" type="button">Run three live checks</button><div id="safety-proof-results" aria-live="polite"></div></div>
+          </section>
         </section>
 
         <section id="prepare" class="stage" aria-labelledby="prepare-title">
@@ -120,10 +132,22 @@
               <label for="packet-note">Renter note (optional)</label>
               <textarea id="packet-note" rows="5" placeholder="Add a note for a qualified human reviewer."></textarea>
               <div id="packet-preview" class="packet-preview" aria-live="polite"></div>
-              <div class="form-actions"><button class="primary-button" id="download-packet" type="button" disabled>Download printable packet</button><span class="status neutral">Never auto-sent</span></div>
-              <p class="help-text">The packet is downloaded only when you choose. RealDoor does not send it to a property or provider.</p>
+              <div class="form-actions"><button class="primary-button" id="download-packet" type="button" disabled>Download print-ready packet</button><span class="status neutral">Never auto-sent</span></div>
+              <p class="help-text">The packet is a readable HTML case file that can be printed to PDF. It is downloaded only when you choose and is never sent to a property or provider.</p>
             </div>
           </div>
+        </section>
+
+        <section id="discover" class="stage muted-stage" aria-labelledby="discover-title">
+          <div class="stage-heading"><p class="eyebrow">Optional public context</p><h2 id="discover-title">Discover public LIHTC project context without gatekeeping</h2></div>
+          <section class="discover panel" aria-labelledby="discover-panel-title">
+            <div class="discover-heading"><div><h3 id="discover-panel-title">Boston-Cambridge-Quincy project subset</h3><p id="discover-boundary" class="boundary-inline"></p></div><span class="status neutral">Availability unknown</span></div>
+            <div class="discover-controls" aria-label="Renter-selected public-data filters"><label for="discover-city">City<select id="discover-city"><option value="">All cities</option></select></label><label for="discover-bedroom">Reported bedroom type<select id="discover-bedroom"><option value="">All reported projects</option><option value="studio_units">Studios reported</option><option value="one_bedroom_units">One-bedroom units reported</option><option value="two_bedroom_units">Two-bedroom units reported</option><option value="three_bedroom_units">Three-bedroom units reported</option><option value="four_bedroom_units">Four-bedroom units reported</option></select></label><button id="clear-discover-filters" class="secondary-button" type="button">Show all projects</button></div>
+            <p id="discover-status" class="help-text" aria-live="polite"></p>
+            <div id="discover-map" class="discover-map" role="img" aria-label="Approximate project-location context. Use the table for the complete accessible project list."></div>
+            <div class="table-wrap"><table class="property-table"><caption class="sr-only">Public LIHTC project context. This is not a vacancy, rent, waitlist, or application-status list.</caption><thead><tr><th>Public project</th><th>Location</th><th>Reported units</th><th>Data note</th></tr></thead><tbody id="discover-results"></tbody></table></div>
+            <p id="discover-source" class="help-text"></p>
+          </section>
         </section>
 
         <section class="audit panel" aria-labelledby="audit-title">
@@ -135,6 +159,8 @@
 
     <dialog id="consent-dialog" aria-labelledby="consent-title"><div class="dialog-content"><div class="dialog-heading"><h2 id="consent-title">Consent and data use</h2><button class="icon-button" data-close="consent-dialog" type="button" aria-label="Close">×</button></div><div id="consent-content"></div><button class="primary-button" data-close="consent-dialog" type="button">I understand</button></div></dialog>
     <dialog id="feature-dialog" aria-labelledby="feature-title"><div class="dialog-content"><div class="dialog-heading"><h2 id="feature-title">Feature register</h2><button class="icon-button" data-close="feature-dialog" type="button" aria-label="Close">×</button></div><div id="feature-content"></div><button class="primary-button" data-close="feature-dialog" type="button">Close</button></div></dialog>
+    <dialog id="source-drawer" class="source-drawer" aria-labelledby="source-drawer-title"><div class="dialog-content source-drawer-content"><div class="dialog-heading"><div><p class="eyebrow">Source evidence</p><h2 id="source-drawer-title">Document source</h2></div><button class="icon-button" data-close="source-drawer" type="button" aria-label="Close source evidence">×</button></div><div id="source-drawer-body"></div></div></dialog>
+    <dialog id="demo-paths-dialog" aria-labelledby="demo-paths-title"><div class="dialog-content"><div class="dialog-heading"><div><p class="eyebrow">Synthetic fixtures only</p><h2 id="demo-paths-title">Demo paths</h2></div><button class="icon-button" data-close="demo-paths-dialog" type="button" aria-label="Close demo paths">×</button></div><p class="help-text">Choose a focused acceptance-demo scenario. You must acknowledge the synthetic-data use summary before any fixture is loaded.</p><div class="demo-path-list"><button class="secondary-button" data-demo-household="HH-003" type="button"><strong>Happy path</strong><span>Recovered profile and income inputs</span></button><button class="secondary-button" data-demo-household="HH-005" type="button"><strong>Expired evidence</strong><span>Employment letter needs review</span></button><button class="secondary-button" data-demo-household="HH-002" type="button"><strong>Conflicting totals</strong><span>Pay-stub conflict is preserved</span></button><button class="secondary-button" data-demo-household="HH-001" type="button"><strong>Extraction abstention</strong><span>Raster-only evidence holds reuse for review</span></button><button class="secondary-button" data-demo-safety type="button"><strong>Safety proof</strong><span>Run refusal, injection, and disclosure checks</span></button></div></div></dialog>
     <div id="live-status" class="sr-only" aria-live="assertive"></div>
     <script src="app.js"></script>
   </body>
